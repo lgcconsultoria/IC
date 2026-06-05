@@ -32,6 +32,7 @@ export class RookService {
       headers: {
         'Content-Type': 'application/json',
         Authorization: this.auth,
+        'User-Agent': 'ClinicaIC/1.0.0', // obrigatório pelo WAF da ROOK
         ...(init?.headers ?? {}),
       },
     });
@@ -42,11 +43,26 @@ export class RookService {
     return res.json() as Promise<T>;
   }
 
-  /** URL da Connection Page do ROOK para um usuário. */
+  /** URL da Connection Page sandbox (teste). Para produção use getAuthorizerUrl(). */
   connectionUrl(userId: string, redirectUrl?: string): string {
     let url = `${this.connectionsBase}/client_uuid/${this.clientUuid}/user_id/${encodeURIComponent(userId)}`;
     if (redirectUrl) url += `?redirect_url=${encodeURIComponent(redirectUrl)}`;
     return url;
+  }
+
+  /** Endpoint de autorização por fonte (fluxo produção). */
+  async getAuthorizerUrl(userId: string, dataSource: string, redirectUrl?: string) {
+    let path = `/api/v1/user_id/${encodeURIComponent(userId)}/data_source/${dataSource}/authorizer`;
+    if (redirectUrl) path += `?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    return this.rook<{ data_source: string; authorized: boolean; authorization_url: string }>(path);
+  }
+
+  /** Revoga autorização de uma fonte para o usuário. */
+  async revokeAuth(userId: string, dataSource: string) {
+    return this.rook(`/api/v1/user_id/${encodeURIComponent(userId)}/data_sources/revoke_auth`, {
+      method: 'POST',
+      body: JSON.stringify({ data_source: dataSource }),
+    });
   }
 
   /** Registra um user_id no ROOK (idempotente). */
