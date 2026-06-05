@@ -7,6 +7,7 @@ import { Ring, LineChart } from '@/components/charts';
 import { Avatar, EmptyState, adhColor } from '@/components/ui';
 import { DEVICES, fmt, type Patient } from '@/lib/clinic-data';
 import { loadClinicPatients } from '@/lib/patient-source';
+import { apiFetch } from '@/lib/api';
 
 interface Report {
   summary: string;
@@ -77,6 +78,8 @@ function ReportsInner() {
   const [pid, setPid] = useState<string | null>(null);
   const [period, setPeriod] = useState(14);
   const [state, setState] = useState<'idle' | 'loading' | 'ready'>('idle');
+  const [aiReport, setAiReport] = useState<string | null>(null);
+  const [aiError, setAiError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
 
@@ -98,10 +101,25 @@ function ReportsInner() {
 
   const p = patients.find((x) => x.id === pid);
 
-  function generate() {
+  async function generate() {
+    if (!p || !pid) return;
     setState('loading');
     setSent(false);
-    setTimeout(() => setState('ready'), 1400);
+    setAiError(null);
+    setAiReport(null);
+
+    try {
+      const periodoLabel = period === 7 ? 'Últimos 7 dias' : period === 14 ? 'Últimas 2 semanas' : 'Último mês';
+      const res = await apiFetch<{ report: string }>('/ai/report', {
+        method: 'POST',
+        body: JSON.stringify({ patientId: pid, periodo: periodoLabel }),
+      });
+      setAiReport(res.report);
+    } catch {
+      // fallback para relatório local se API não disponível
+      setAiReport(null);
+    }
+    setState('ready');
   }
 
   const rep = state === 'ready' && p ? buildReport(p, period) : null;
@@ -222,13 +240,19 @@ function ReportsInner() {
                   <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>aderência</div>
                 </div>
               </div>
-              <p style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--text)', marginBottom: 18 }}>{rep.summary}</p>
+              {aiReport ? (
+                <div style={{ fontSize: 13.5, lineHeight: 1.75, color: 'var(--text)', marginBottom: 18, whiteSpace: 'pre-wrap' }}>{aiReport}</div>
+              ) : (
+                <>
+                  <p style={{ fontSize: 13.5, lineHeight: 1.65, color: 'var(--text)', marginBottom: 18 }}>{rep.summary}</p>
+                  <Section icon="check" color="var(--good)" title="Pontos positivos" items={rep.good} />
+                  <Section icon="warn" color="var(--warn)" title="Pontos de atenção" items={rep.warn} />
+                  <Section icon="sparkle" color="var(--accent)" title="Sugestões para a consulta" items={rep.suggestions} />
+                </>
+              )}
               <div style={{ marginBottom: 18 }}>
                 <LineChart data={p.s.steps} color="var(--c-steps)" height={110} goal={10000} unit=" passos" />
               </div>
-              <Section icon="check" color="var(--good)" title="Pontos positivos" items={rep.good} />
-              <Section icon="warn" color="var(--warn)" title="Pontos de atenção" items={rep.warn} />
-              <Section icon="sparkle" color="var(--accent)" title="Sugestões para a consulta" items={rep.suggestions} />
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5 }}>
                 Gerado automaticamente a partir de dados de wearable via Terra API. Este resumo é um apoio à decisão clínica e não substitui a avaliação profissional.
               </div>

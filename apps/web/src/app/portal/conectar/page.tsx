@@ -1,10 +1,12 @@
 'use client';
-/* IC Clínica — Portal do paciente: conectar wearable (fluxo Terra Connect) */
-import { useState } from 'react';
+/* IC Clínica — Portal do paciente: conectar wearable via ROOK Connection Page */
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { DeviceBadge, ConsentStatus } from '@/components/ui';
 import { DEVICES, type DeviceKey } from '@/lib/clinic-data';
+import { apiFetch } from '@/lib/api';
+import { getSupabase } from '@/lib/supabase';
 
 function Logo({ size = 34 }: { size?: number }) {
   return (
@@ -28,28 +30,55 @@ const DEV_DATA: Record<DeviceKey, string[]> = {
 
 export default function ConnectWearablePage() {
   const router = useRouter();
-  const [connected, setConnected] = useState<Set<DeviceKey>>(() => new Set<DeviceKey>(['garmin']));
-  const [connecting, setConnecting] = useState<DeviceKey | null>(null);
+  const [connectionUrl, setConnectionUrl] = useState<string | null>(null);
+  const [loadingUrl, setLoadingUrl] = useState(true);
+  const [connectedSources, setConnectedSources] = useState<string[]>([]);
+  const [userName, setUserName] = useState('');
 
-  function connect(d: DeviceKey) {
-    setConnecting(d);
-    setTimeout(() => {
-      setConnected((s) => new Set<DeviceKey>([...s, d]));
-      setConnecting(null);
-    }, 1200);
-  }
-  function disconnect(d: DeviceKey) {
-    setConnected((s) => {
-      const n = new Set(s);
-      n.delete(d);
-      return n;
-    });
+  useEffect(() => {
+    async function init() {
+      const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const redirectUrl = `${origin}/portal/conectado`;
+
+      try {
+        const { url } = await apiFetch<{ url: string }>(
+          `/rook/connection-url?redirect_url=${encodeURIComponent(redirectUrl)}`,
+        );
+        setConnectionUrl(url);
+      } catch {
+        const clientUuid = process.env.NEXT_PUBLIC_ROOK_CLIENT_UUID;
+        if (clientUuid) {
+          const supaUser = (await getSupabase().auth.getUser()).data.user;
+          const userId = supaUser?.id ?? 'demo';
+          setConnectionUrl(
+            `https://connections.rook-connect.review/client_uuid/${clientUuid}/user_id/${userId}`,
+          );
+        }
+      }
+
+      const { data: { user } } = await getSupabase().auth.getUser();
+      if (user?.email) setUserName(user.email.split('@')[0]);
+
+      try {
+        const res = await apiFetch<{ data_sources: { data_source: string; authorized: boolean }[] }>('/rook/data-sources');
+        setConnectedSources(res.data_sources.filter((s) => s.authorized).map((s) => s.data_source));
+      } catch {
+        // ignora — sem status de conexão disponível ainda
+      }
+
+      setLoadingUrl(false);
+    }
+    init();
+  }, []);
+
+  function openRookConnection() {
+    if (connectionUrl) window.open(connectionUrl, '_blank', 'noopener');
   }
 
   const steps: [string, boolean][] = [
     ['Login', true],
-    ['Conectar dispositivo', connected.size > 0],
-    ['Consentimento', connected.size > 0],
+    ['Conectar dispositivo', connectedSources.length > 0],
+    ['Consentimento', connectedSources.length > 0],
     ['Pronto', false],
   ];
 
@@ -64,12 +93,16 @@ export default function ConnectWearablePage() {
           </div>
         </div>
         <div className="row gap10">
-          <span className="badge good">
-            <span className="bdot" />
-            {connected.size + ' conectado(s)'}
-          </span>
+          {connectedSources.length > 0 && (
+            <span className="badge good">
+              <span className="bdot" />
+              {connectedSources.length + ' conectado(s)'}
+            </span>
+          )}
           <div className="row gap8" style={{ paddingLeft: 6 }}>
-            <div className="avatar" style={{ width: 32, height: 32, background: '#3a6ea5', fontSize: 12 }}>JP</div>
+            <div className="avatar" style={{ width: 32, height: 32, background: '#3a6ea5', fontSize: 12 }}>
+              {userName ? userName.slice(0, 2).toUpperCase() : 'U'}
+            </div>
             <button className="icon-btn" onClick={() => router.push('/portal/login')}>
               <Icon n="logout" size={17} />
             </button>
@@ -79,11 +112,13 @@ export default function ConnectWearablePage() {
 
       <div style={{ maxWidth: 920, margin: '0 auto', padding: '32px 24px 60px' }}>
         <div style={{ textAlign: 'center', marginBottom: 8 }}>
-          <div className="eyebrow" style={{ color: 'var(--accent)' }}>Bem-vindo, João 👋</div>
+          <div className="eyebrow" style={{ color: 'var(--accent)' }}>
+            {userName ? `Bem-vindo, ${userName} 👋` : 'Bem-vindo 👋'}
+          </div>
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', textAlign: 'center' }}>Conecte seu wearable</h1>
         <p className="muted" style={{ textAlign: 'center', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
-          Escolha seus aplicativos de saúde. Seus dados são enviados de forma segura para sua equipe clínica acompanhar sua evolução.
+          Clique em <strong>Abrir página de conexão</strong> para autorizar seu dispositivo. Seus dados são enviados de forma segura para sua equipe clínica.
         </p>
 
         <div className="row gap10" style={{ justifyContent: 'center', margin: '22px 0 28px' }}>
@@ -100,60 +135,78 @@ export default function ConnectWearablePage() {
           ))}
         </div>
 
+        <div className="card" style={{ padding: 32, textAlign: 'center', marginBottom: 24 }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>🔗</div>
+          <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Página de Conexão de Dispositivos</h2>
+          <p className="muted" style={{ fontSize: 13, maxWidth: 440, margin: '0 auto 24px', lineHeight: 1.6 }}>
+            Conecte seu Garmin, Polar, Fitbit, Oura, WHOOP e outros dispositivos de forma segura através do ROOK Connect.
+          </p>
+          <div className="row gap8" style={{ justifyContent: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
+            {(['garmin', 'oura', 'polar', 'fitbit', 'whoop'] as DeviceKey[]).map((d) => (
+              <DeviceBadge key={d} device={d} size={36} />
+            ))}
+            <span style={{ fontSize: 12, color: 'var(--text-faint)', alignSelf: 'center' }}>+ mais</span>
+          </div>
+          <button
+            className="btn primary"
+            style={{ minWidth: 220 }}
+            onClick={openRookConnection}
+            disabled={loadingUrl || !connectionUrl}
+          >
+            {loadingUrl ? (
+              <>
+                <span className="spin" style={{ width: 15, height: 15, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                Preparando…
+              </>
+            ) : (
+              <>
+                <Icon n="plug" size={16} />
+                Abrir página de conexão
+                <Icon n="arrowRight" size={15} />
+              </>
+            )}
+          </button>
+          {connectionUrl && (
+            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 10 }}>
+              Você será redirecionado para a página segura do ROOK Connect.
+            </p>
+          )}
+        </div>
+
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(270px,1fr))', marginBottom: 24 }}>
           {(Object.keys(DEVICES) as DeviceKey[]).map((d) => {
-            const on = connected.has(d);
-            const loading = connecting === d;
+            const connected = connectedSources.includes(DEVICES[d].name);
             return (
-              <div key={d} className="card" style={{ padding: 16, borderColor: on ? 'var(--accent)' : 'var(--border)', borderWidth: on ? 1.5 : 1, transition: 'border-color .2s' }}>
+              <div key={d} className="card" style={{ padding: 16, borderColor: connected ? 'var(--accent)' : 'var(--border)', borderWidth: connected ? 1.5 : 1, transition: 'border-color .2s' }}>
                 <div className="between" style={{ marginBottom: 12 }}>
                   <div className="row gap10">
                     <DeviceBadge device={d} size={40} />
                     <div>
                       <div style={{ fontWeight: 700, fontSize: 14 }}>{DEVICES[d].name}</div>
-                      {on && (
+                      {connected && (
                         <div className="row gap6" style={{ fontSize: 11, color: 'var(--good)', fontWeight: 600 }}>
                           <span style={{ width: 6, height: 6, borderRadius: 50, background: 'var(--good)' }} />
-                          Sincronizando
+                          Autorizado
                         </div>
                       )}
                     </div>
                   </div>
-                  {on && <Icon n="check" size={18} style={{ color: 'var(--good)' }} />}
+                  {connected && <Icon n="check" size={18} style={{ color: 'var(--good)' }} />}
                 </div>
-                <div className="row gap6 wrap" style={{ marginBottom: 14 }}>
+                <div className="row gap6 wrap">
                   {DEV_DATA[d].map((s) => (
                     <span key={s} style={{ fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 20, background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
                       {s}
                     </span>
                   ))}
                 </div>
-                {on ? (
-                  <button className="btn ghost sm" style={{ width: '100%' }} onClick={() => disconnect(d)}>
-                    Desconectar
-                  </button>
-                ) : (
-                  <button className={'btn ' + (loading ? 'ghost' : 'soft') + ' sm'} style={{ width: '100%' }} onClick={() => connect(d)} disabled={loading}>
-                    {loading ? (
-                      <>
-                        <span className="spin" style={{ width: 13, height: 13, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                        Conectando…
-                      </>
-                    ) : (
-                      <>
-                        <Icon n="plug" size={14} />
-                        Conectar
-                      </>
-                    )}
-                  </button>
-                )}
               </div>
             );
           })}
         </div>
 
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-          <ConsentStatus granted={connected.size > 0} scopes={connected.size > 0 ? ['Atividade física', 'Frequência cardíaca', 'Sono', 'Calorias'] : null} />
+          <ConsentStatus granted={connectedSources.length > 0} scopes={connectedSources.length > 0 ? ['Atividade física', 'Frequência cardíaca', 'Sono', 'Calorias'] : null} />
           <div className="card card-pad">
             <div className="row gap8" style={{ marginBottom: 10 }}>
               <Icon n="lock" size={17} style={{ color: 'var(--accent)' }} />
@@ -175,8 +228,8 @@ export default function ConnectWearablePage() {
             <Icon n="chevL" size={15} />
             Sair
           </button>
-          <button className="btn primary" disabled={connected.size === 0} onClick={() => router.push('/clinica')}>
-            Concluir e ver meu painel
+          <button className="btn primary" onClick={() => router.push('/clinica')}>
+            {connectedSources.length > 0 ? 'Concluir e ver meu painel' : 'Pular por agora'}
             <Icon n="arrowRight" size={16} />
           </button>
         </div>
