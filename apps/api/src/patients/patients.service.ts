@@ -5,6 +5,7 @@ import {
   InternalServerErrorException,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../supabase/supabase.module';
 import { AppUser, isStaff } from '../auth/app-user';
@@ -20,6 +21,7 @@ import type { CreateMeasurementDto } from './dto/create-measurement.dto';
 export class PatientsService {
   constructor(
     @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
+    private readonly cfg: ConfigService,
   ) {}
 
   async list(user: AppUser) {
@@ -72,6 +74,29 @@ export class PatientsService {
         patErr?.message ?? 'Falha ao criar paciente',
       );
     }
+
+    // Send invite email so patient can set password and connect wearable
+    try {
+      const supabaseUrl = this.cfg.get<string>('SUPABASE_URL') ?? '';
+      const serviceKey = this.cfg.get<string>('SUPABASE_SECRET_KEY') ?? '';
+      const appUrl = this.cfg.get<string>('APP_URL') ?? 'https://ic-web.vercel.app';
+      await fetch(`${supabaseUrl}/auth/v1/invite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+        },
+        body: JSON.stringify({
+          email: dto.email,
+          data: { nome: dto.nome, role: 'paciente' },
+          redirect_to: `${appUrl}/portal/conectar`,
+        }),
+      });
+    } catch {
+      // Invite email failure is non-fatal — patient row was already created
+    }
+
     return patient;
   }
 

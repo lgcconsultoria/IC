@@ -368,3 +368,16 @@ input[type='checkbox'] { accent-color: var(--accent); }
 
 /* full-height app root (Next renders directly under body) */
 body > .app, body > .portal-root { height: 100%; }
+
+
+/* ============================================================
+   Print styles — PDF export
+   ============================================================ */
+@media print {
+  .sidebar, .topbar, .sb-foot, .page-wide > :first-child:not(.report-print),
+  .seg, select, .btn, button { display: none !important; }
+  body, .app, .main, .content { background: white !important; color: black !important; }
+  .card { box-shadow: none !important; border: 1px solid #ddd !important; }
+  .report-print { display: block !important; }
+  @page { margin: 20mm; }
+}
