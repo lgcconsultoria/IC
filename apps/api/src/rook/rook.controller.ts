@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Query, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { SupabaseAuthGuard } from '../auth/supabase-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -42,5 +42,22 @@ export class RookController {
   async register(@CurrentUser() user: AppUser) {
     await this.rook.registerUser(user.id);
     return { registered: true, userId: user.id };
+  }
+
+  @Get('authorizer/:dataSource')
+  @ApiOperation({ summary: 'Retorna URL de autorização por fonte (fluxo produção)' })
+  async authorizer(
+    @CurrentUser() user: AppUser,
+    @Param('dataSource') dataSource: string,
+    @Query('redirect_url') redirectUrl?: string,
+  ) {
+    await this.rook.registerUser(user.id);
+    return this.rook.getAuthorizerUrl(user.id, dataSource, redirectUrl);
+  }
+
+  @Delete('data-sources/:dataSource')
+  @ApiOperation({ summary: 'Revoga autorização de uma fonte de dados' })
+  revokeAuth(@CurrentUser() user: AppUser, @Param('dataSource') dataSource: string) {
+    return this.rook.revokeAuth(user.id, dataSource);
   }
 }
