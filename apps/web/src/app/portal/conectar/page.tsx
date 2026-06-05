@@ -37,6 +37,11 @@ export default function ConnectWearablePage() {
 
   useEffect(() => {
     async function init() {
+      // Garante que há sessão ativa antes de gerar a URL
+      const { data: { user: supaUser } } = await getSupabase().auth.getUser();
+      if (!supaUser) { router.push('/portal/login'); return; }
+      if (supaUser.email) setUserName(supaUser.email.split('@')[0]);
+
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
       const redirectUrl = `${origin}/portal/conectado`;
 
@@ -46,19 +51,14 @@ export default function ConnectWearablePage() {
         );
         setConnectionUrl(url);
       } catch {
-        // Fallback direto: usa UUID sandbox hardcoded (público) + user_id do Supabase
+        // Fallback direto: usa UUID sandbox + user_id real do Supabase (nunca "demo")
         const clientUuid =
           process.env.NEXT_PUBLIC_ROOK_CLIENT_UUID ??
           '5e8699f1-f39b-41eb-972d-77cd9c1d76bb';
-        const supaUser = (await getSupabase().auth.getUser()).data.user;
-        const userId = supaUser?.id ?? 'demo';
         setConnectionUrl(
-          `https://connections.rook-connect.review/client_uuid/${clientUuid}/user_id/${encodeURIComponent(userId)}`,
+          `https://connections.rook-connect.review/client_uuid/${clientUuid}/user_id/${encodeURIComponent(supaUser.id)}`,
         );
       }
-
-      const { data: { user } } = await getSupabase().auth.getUser();
-      if (user?.email) setUserName(user.email.split('@')[0]);
 
       try {
         const res = await apiFetch<{ data_sources: { data_source: string; authorized: boolean }[] }>('/rook/data-sources');
@@ -104,7 +104,7 @@ export default function ConnectWearablePage() {
             <div className="avatar" style={{ width: 32, height: 32, background: '#3a6ea5', fontSize: 12 }}>
               {userName ? userName.slice(0, 2).toUpperCase() : 'U'}
             </div>
-            <button className="icon-btn" onClick={() => router.push('/portal/login')}>
+            <button className="icon-btn" title="Sair" onClick={async () => { await getSupabase().auth.signOut(); router.push('/portal/login'); }}>
               <Icon n="logout" size={17} />
             </button>
           </div>
@@ -225,8 +225,8 @@ export default function ConnectWearablePage() {
         </div>
 
         <div className="between" style={{ marginTop: 24, flexWrap: 'wrap', gap: 12 }}>
-          <button className="btn ghost" onClick={() => router.push('/portal/login')}>
-            <Icon n="chevL" size={15} />
+          <button className="btn ghost" onClick={async () => { await getSupabase().auth.signOut(); router.push('/portal/login'); }}>
+            <Icon n="logout" size={15} />
             Sair
           </button>
           <button className="btn primary" onClick={() => router.push('/clinica')}>
