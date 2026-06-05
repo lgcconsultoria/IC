@@ -1,17 +1,21 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
- * Cliente Supabase para o navegador.
- * Usa a publishable key — segura no front desde que RLS esteja ativo e com
- * policies configuradas. Nunca use a secret key aqui.
+ * Cliente Supabase para o navegador (publishable key).
+ * Criação lazy para não quebrar o build quando as envs não estão presentes.
+ * Nunca use a secret key aqui.
  */
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+let client: SupabaseClient | null = null;
 
-if (!url || !publishableKey) {
-  throw new Error(
-    'Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY no .env',
-  );
+export function getSupabase(): SupabaseClient {
+  if (client) return client;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      'Defina NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+    );
+  }
+  client = createClient(url, key);
+  return client;
 }
-
-export const supabase = createClient(url, publishableKey);

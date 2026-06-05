@@ -2,8 +2,13 @@ export default function Home() {
   return (
     <main style={{ maxWidth: 720, margin: '0 auto', padding: '4rem 1.5rem' }}>
       <h1 style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>Clínica IC</h1>
-      <p style={{ color: '#555', marginBottom: '2rem' }}>
+      <p style={{ color: '#555', marginBottom: '1rem' }}>
         Plataforma de acompanhamento de emagrecimento saudável.
+      </p>
+      <p style={{ marginBottom: '2rem' }}>
+        <a href="/login" style={{ color: '#0a58ca' }}>
+          Entrar →
+        </a>
       </p>
 
       <div style={{ display: 'grid', gap: '1rem' }}>
