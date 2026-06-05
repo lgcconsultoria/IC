@@ -28,6 +28,7 @@ const NAV: NavGroup[] = [
       { href: '/clinica/pacientes', label: 'Pacientes', icon: 'users', match: (p) => p.startsWith('/clinica/pacientes') },
       { href: '/clinica/alertas', label: 'Alertas', icon: 'bell', badge: true, match: (p) => p.startsWith('/clinica/alertas') },
       { href: '/clinica/relatorios', label: 'Relatórios', icon: 'file', match: (p) => p.startsWith('/clinica/relatorios') },
+      { href: '/clinica/equipe', label: 'Equipe', icon: 'users', match: (p) => p.startsWith('/clinica/equipe') },
     ],
   },
   {
@@ -46,6 +47,8 @@ function titleFor(path: string): string {
   if (path.startsWith('/clinica/pacientes')) return 'Pacientes';
   if (path.startsWith('/clinica/alertas')) return 'Central de alertas';
   if (path.startsWith('/clinica/relatorios')) return 'Relatórios';
+  if (path.startsWith('/clinica/equipe')) return 'Equipe';
+  if (path.startsWith('/clinica/perfil')) return 'Meu perfil';
   return 'IC Clínica';
 }
 
@@ -100,7 +103,9 @@ function Sidebar({ critCount, open, onClose }: { critCount: number; open: boolea
               <div style={{ fontWeight: 700, fontSize: 12.5 }}>Dra. Marina Costa</div>
               <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>Gestão · Cardiologia</div>
             </div>
-            <Icon n="settings" size={16} style={{ color: 'var(--text-faint)' }} />
+            <Link href="/clinica/perfil" className="icon-btn" title="Meu perfil" onClick={onClose}>
+              <Icon n="settings" size={16} style={{ color: 'var(--text-faint)' }} />
+            </Link>
           </div>
         </div>
       </aside>

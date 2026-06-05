@@ -60,4 +60,13 @@ export class RookController {
   revokeAuth(@CurrentUser() user: AppUser, @Param('dataSource') dataSource: string) {
     return this.rook.revokeAuth(user.id, dataSource);
   }
+
+  @Post('sync-user')
+  @ApiOperation({ summary: 'Mapeia rook_user_id ao paciente autenticado após callback OAuth' })
+  async syncUser(
+    @CurrentUser() user: AppUser,
+    @Body() body: { rook_user_id: string },
+  ) {
+    return this.rook.syncUser(user.id, body.rook_user_id);
+  }
 }

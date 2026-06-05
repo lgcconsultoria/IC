@@ -46,14 +46,15 @@ export default function ConnectWearablePage() {
         );
         setConnectionUrl(url);
       } catch {
-        const clientUuid = process.env.NEXT_PUBLIC_ROOK_CLIENT_UUID;
-        if (clientUuid) {
-          const supaUser = (await getSupabase().auth.getUser()).data.user;
-          const userId = supaUser?.id ?? 'demo';
-          setConnectionUrl(
-            `https://connections.rook-connect.review/client_uuid/${clientUuid}/user_id/${userId}`,
-          );
-        }
+        // Fallback direto: usa UUID sandbox hardcoded (público) + user_id do Supabase
+        const clientUuid =
+          process.env.NEXT_PUBLIC_ROOK_CLIENT_UUID ??
+          '5e8699f1-f39b-41eb-972d-77cd9c1d76bb';
+        const supaUser = (await getSupabase().auth.getUser()).data.user;
+        const userId = supaUser?.id ?? 'demo';
+        setConnectionUrl(
+          `https://connections.rook-connect.review/client_uuid/${clientUuid}/user_id/${encodeURIComponent(userId)}`,
+        );
       }
 
       const { data: { user } } = await getSupabase().auth.getUser();
@@ -72,7 +73,7 @@ export default function ConnectWearablePage() {
   }, []);
 
   function openRookConnection() {
-    if (connectionUrl) window.open(connectionUrl, '_blank', 'noopener');
+    if (connectionUrl) window.location.href = connectionUrl;
   }
 
   const steps: [string, boolean][] = [

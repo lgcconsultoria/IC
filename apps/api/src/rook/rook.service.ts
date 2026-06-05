@@ -1,5 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Inject } from '@nestjs/common';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import { SUPABASE_ADMIN } from '../supabase/supabase.module';
 
 const ROOK_SANDBOX = 'https://api.rook-connect.review';
 const ROOK_PROD = 'https://api.rook-connect.com';
@@ -12,7 +15,10 @@ export class RookService {
   private readonly base: string;
   private readonly connectionsBase: string;
 
-  constructor(private cfg: ConfigService) {
+  constructor(
+    private cfg: ConfigService,
+    @Inject(SUPABASE_ADMIN) private readonly db: SupabaseClient,
+  ) {
     const isProd = cfg.get('ROOK_ENV') === 'production';
     this.base = isProd ? ROOK_PROD : ROOK_SANDBOX;
     this.connectionsBase = isProd ? CONNECTIONS_PROD : CONNECTIONS_SANDBOX;
@@ -83,6 +89,25 @@ export class RookService {
     return this.rook<{ data_sources: { data_source: string; authorized: boolean; image: string }[] }>(
       `/api/v1/user_id/${encodeURIComponent(userId)}/data_sources`,
     );
+  }
+
+  /** Mapeia rook_user_id → patient após callback OAuth. */
+  async syncUser(supabaseUserId: string, rookUserId: string) {
+    // Find the patient whose user has this auth_uid
+    const { data: patient } = await this.db
+      .from('patients')
+      .select('id, user_id')
+      .eq('user_id', (await this.db.from('users').select('id').eq('auth_uid', supabaseUserId).single()).data?.id ?? '')
+      .maybeSingle();
+
+    if (patient) {
+      // Upsert wearable_connections with the rook user id
+      await this.db.from('wearable_connections').upsert(
+        { patient_id: patient.id, provedor: 'ROOK', terra_user_id: rookUserId, status: 'ativo' },
+        { onConflict: 'patient_id,provedor' },
+      );
+    }
+    return { synced: true, rookUserId };
   }
 
   /** Busca resumo físico de um dia. */

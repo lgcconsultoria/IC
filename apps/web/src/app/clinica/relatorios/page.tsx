@@ -83,6 +83,36 @@ function ReportsInner() {
   const [copied, setCopied] = useState(false);
   const [sent, setSent] = useState(false);
 
+  function getReportText(): string {
+    if (!p || !rep) return '';
+    const lines = [
+      `Relatório Clínico — ${p.name}`,
+      `Últimos ${period} dias · IC Clínica`,
+      '',
+      rep.summary,
+      '',
+      'PONTOS POSITIVOS',
+      ...rep.good.map((x) => `• ${x}`),
+      '',
+      'PONTOS DE ATENÇÃO',
+      ...rep.warn.map((x) => `• ${x}`),
+      '',
+      'SUGESTÕES PARA A CONSULTA',
+      ...rep.suggestions.map((x) => `• ${x}`),
+    ];
+    return aiReport ?? lines.join('\n');
+  }
+
+  function copyReport() {
+    navigator.clipboard.writeText(getReportText()).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  function exportPdf() {
+    window.print();
+  }
+
   useEffect(() => {
     loadClinicPatients().then((r) => {
       setPatients(r.patients);
@@ -176,11 +206,11 @@ function ReportsInner() {
           </button>
           {state === 'ready' && (
             <div style={{ display: 'grid', gap: 8, marginTop: 12 }}>
-              <button className="btn ghost" onClick={() => { setCopied(true); setTimeout(() => setCopied(false), 1800); }}>
+              <button className="btn ghost" onClick={copyReport}>
                 <Icon n={copied ? 'check' : 'copy'} size={15} />
                 {copied ? 'Copiado!' : 'Copiar texto'}
               </button>
-              <button className="btn ghost">
+              <button className="btn ghost" onClick={exportPdf}>
                 <Icon n="download" size={15} />
                 Exportar PDF
               </button>
@@ -223,7 +253,7 @@ function ReportsInner() {
           </div>
         ) : (
           rep && (
-            <div className="card card-pad fade-in" style={{ maxWidth: 760 }}>
+            <div className="card card-pad fade-in report-print" style={{ maxWidth: 760 }}>
               <div className="between" style={{ paddingBottom: 16, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
                 <div>
                   <div className="row gap8" style={{ color: 'var(--accent)', marginBottom: 4 }}>
