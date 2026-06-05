@@ -1,0 +1,212 @@
+'use client';
+/* IC Clínica — Dashboard */
+import { useState, useEffect, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
+import { Icon } from '@/components/icons';
+import { LineChart, BarChart, Donut, Ring } from '@/components/charts';
+import { MetricCard, Avatar, adhColor, syncLabel, LoadingSkeleton } from '@/components/ui';
+import { DATA, fmt, byId } from '@/lib/clinic-data';
+
+function KpiStrip({ goPatients, goAlerts }: { goPatients: (f?: string) => void; goAlerts: () => void }) {
+  const c = DATA.clinic;
+  const kpis = [
+    { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', trend: 4, sub: '3 novos esta semana' },
+    { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', trend: 6, sub: 'sincronizando < 48h' },
+    { icon: 'wifiOff', label: 'Sem sincronização', value: c.noSync, accent: 'var(--warn)', trend: 12, trendInvert: true, sub: 'precisam reconectar', go: () => goPatients('sem-sync') },
+    { icon: 'trend', label: 'Baixa aderência', value: c.lowAdherence, accent: 'var(--crit)', trend: -8, trendInvert: true, sub: '< 50% de meta', go: () => goPatients('baixa-aderencia') },
+    { icon: 'warn', label: 'Alertas críticos', value: c.critAlerts, accent: 'var(--crit)', trend: -2, trendInvert: true, sub: 'requerem ação', go: goAlerts },
+    { icon: 'sparkle', label: 'Evolução semanal', value: '+' + c.weeklyEvolution + '%', accent: 'var(--good)', trend: c.weeklyEvolution, sub: 'aderência média da clínica' },
+  ];
+  return (
+    <div className="metrics-grid stagger">
+      {kpis.map((k, i) => (
+        <MetricCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} trend={k.trend} trendInvert={k.trendInvert} sub={k.sub} onClick={k.go} />
+      ))}
+    </div>
+  );
+}
+
+function ChartCard({ title, sub, right, children, legend }: { title: ReactNode; sub?: ReactNode; right?: ReactNode; children: ReactNode; legend?: ReactNode }) {
+  return (
+    <div className="card card-pad">
+      <div className="between" style={{ marginBottom: 14 }}>
+        <div>
+          <div className="section-title" style={{ fontSize: 14.5 }}>{title}</div>
+          {sub && <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 1 }}>{sub}</div>}
+        </div>
+        {right}
+      </div>
+      {children}
+      {legend}
+    </div>
+  );
+}
+
+function PriorityList({ goPatients, goPatient }: { goPatients: () => void; goPatient: (id: string) => void }) {
+  const ps = [...DATA.patients].sort((a, b) => a.adherence - b.adherence || b.alertCount - a.alertCount).slice(0, 5);
+  return (
+    <div className="card">
+      <div className="between" style={{ padding: '16px 18px 12px' }}>
+        <div>
+          <div className="section-title" style={{ fontSize: 14.5 }}>Pacientes prioritários</div>
+          <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 1 }}>Ordenados por menor aderência e alertas abertos</div>
+        </div>
+        <button className="btn ghost sm" onClick={goPatients}>
+          Ver todos
+          <Icon n="arrowRight" size={14} />
+        </button>
+      </div>
+      <div>
+        {ps.map((p) => (
+          <div
+            key={p.id}
+            className="between"
+            style={{ padding: '11px 18px', borderTop: '1px solid var(--border)', cursor: 'pointer' }}
+            onClick={() => goPatient(p.id)}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--surface-2)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <div className="row gap12" style={{ minWidth: 0 }}>
+              <div style={{ position: 'relative' }}>
+                <Avatar p={p} size={38} />
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: 50, background: adhColor(p.adherence), border: '2px solid var(--surface)' }} />
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 13.5 }}>{p.name}</div>
+                <div className="row gap8" style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
+                  <span>{p.age + ' anos'}</span>
+                  <span>·</span>
+                  {p.syncHours > 48 ? (
+                    <span style={{ color: 'var(--crit)', fontWeight: 600 }}>{'sem sync ' + syncLabel(p.syncHours)}</span>
+                  ) : (
+                    <span>{'sync ' + syncLabel(p.syncHours)}</span>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="row gap16 hide-sm">
+              <div style={{ textAlign: 'right' }}>
+                <div className="tnum" style={{ fontSize: 13, fontWeight: 700 }}>{fmt(p.steps)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-faint)' }}>passos</div>
+              </div>
+              {p.alertCount > 0 && (
+                <span className="badge warn">
+                  <Icon n="bell" size={12} />
+                  {p.alertCount}
+                </span>
+              )}
+              <Ring value={p.adherence} size={38} stroke={4.5} color={adhColor(p.adherence)}>
+                <span className="tnum" style={{ fontSize: 12, fontWeight: 800 }}>{p.adherence}</span>
+              </Ring>
+              <Icon n="chevR" size={16} style={{ color: 'var(--text-faint)' }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const t = setTimeout(() => setLoading(false), 650);
+    return () => clearTimeout(t);
+  }, []);
+  const A = DATA.agg;
+  const dist = DATA.adherenceDist;
+
+  const goPatients = (f?: string) => router.push('/clinica/pacientes' + (f ? `?filter=${f}` : ''));
+  const goPatient = (id: string) => router.push(`/clinica/pacientes/${id}`);
+
+  const charts = (
+    <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
+      <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <ChartCard title="Atividade geral" sub="Passos médios/dia · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />8%</span>}>
+          <LineChart data={A.steps} color="var(--c-steps)" height={140} unit=" passos" />
+        </ChartCard>
+        <ChartCard title="Calorias ativas" sub="Média da clínica · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />5%</span>}>
+          <BarChart data={A.calories} color="var(--c-cal)" height={140} unit=" kcal" />
+        </ChartCard>
+      </div>
+      <ChartCard title="Distribuição de aderência" sub={DATA.clinic.totalPatients + ' pacientes'}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '6px 0' }}>
+          <div style={{ position: 'relative' }}>
+            <Donut segments={dist} size={150} stroke={20} />
+            <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
+              <div>
+                <div className="tnum" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>67</div>
+                <div style={{ fontSize: 10.5, color: 'var(--text-faint)', fontWeight: 700 }}>média geral</div>
+              </div>
+            </div>
+          </div>
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {dist.map((d, i) => (
+              <div key={i} className="between" style={{ gap: 10 }}>
+                <div className="row gap8 grow" style={{ minWidth: 0 }}>
+                  <span style={{ width: 9, height: 9, borderRadius: 3, background: d.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{d.label}</span>
+                </div>
+                <span className="tnum" style={{ fontWeight: 700, fontSize: 13, flexShrink: 0 }}>{d.value}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ChartCard>
+    </div>
+  );
+
+  const sleepCard = (
+    <ChartCard
+      title="Sono médio da clínica"
+      sub="Horas por noite · 14 dias"
+      right={<span className="badge neutral">7.0h média</span>}
+      legend={
+        <div className="row gap16" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-faint)' }}>
+          <span className="row gap6"><span style={{ width: 14, height: 2, background: 'var(--c-sleep)', borderRadius: 2 }} />Realizado</span>
+          <span className="row gap6"><span style={{ width: 14, height: 0, borderTop: '2px dashed var(--text-faint)' }} />Meta 7.5h</span>
+        </div>
+      }
+    >
+      <LineChart data={A.sleep} color="var(--c-sleep)" height={130} goal={7.5} fmtV={(v) => v + 'h'} yPad={0.25} />
+    </ChartCard>
+  );
+
+  return (
+    <div className="page page-wide">
+      <div className="between" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>Painel da clínica · 05 jun 2026</div>
+          <h2 className="page-title">Bom dia, Dra. Marina 👋</h2>
+          <div className="muted" style={{ marginTop: 2 }}>{'Visão consolidada de ' + DATA.clinic.totalPatients + ' pacientes monitorados via wearables.'}</div>
+        </div>
+        <div className="row gap8">
+          <div className="seg">
+            <button className="active">7 dias</button>
+            <button>14 dias</button>
+            <button>30 dias</button>
+          </div>
+          <button className="btn ghost"><Icon n="download" size={16} />Exportar</button>
+          <button className="btn primary" onClick={() => router.push('/clinica/relatorios')}><Icon n="sparkle" size={16} />Relatório IA</button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="grid">
+          <LoadingSkeleton variant="metric" count={6} />
+          <LoadingSkeleton variant="row" count={4} />
+        </div>
+      ) : (
+        <div className="grid fade-in">
+          <KpiStrip goPatients={goPatients} goAlerts={() => router.push('/clinica/alertas')} />
+          {charts}
+          <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
+            <PriorityList goPatients={() => router.push('/clinica/pacientes')} goPatient={goPatient} />
+            {sleepCard}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,23 +1,21 @@
 import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
+import './globals.css';
+import { ThemeProvider, themeInitScript } from '@/components/theme-provider';
 
 export const metadata: Metadata = {
-  title: 'Clínica IC',
-  description: 'Plataforma de acompanhamento de emagrecimento saudável',
+  title: 'IC Clínica — Wearables para clínicas',
+  description: 'Conectados com a sua saúde. Acompanhamento clínico via wearables.',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="pt-BR">
-      <body
-        style={{
-          margin: 0,
-          fontFamily: 'system-ui, -apple-system, sans-serif',
-          background: '#f7f7f8',
-          color: '#1a1a1a',
-        }}
-      >
-        {children}
+    <html lang="pt-BR" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body>
+        <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
   );
