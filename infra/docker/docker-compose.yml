@@ -1,0 +1,9 @@
+# Serviços de apoio para desenvolvimento local (filas/cache).
+# O Postgres/Auth/Storage vêm do `supabase start`.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ic-redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
