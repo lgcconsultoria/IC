@@ -7,6 +7,7 @@ import { PatientsModule } from './patients/patients.module';
 import { WearablesModule } from './wearables/wearables.module';
 import { RookModule } from './rook/rook.module';
 import { AiModule } from './ai/ai.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { AiModule } from './ai/ai.module';
     WearablesModule,
     RookModule,
     AiModule,
+    UsersModule,
   ],
 })
 export class AppModule {}

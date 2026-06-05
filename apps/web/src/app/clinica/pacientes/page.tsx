@@ -7,6 +7,7 @@ import { Ring, Sparkline } from '@/components/charts';
 import { Avatar, DeviceBadge, PatientCard, PerfBadge, adhColor, syncLabel, EmptyState } from '@/components/ui';
 import { DEVICES, fmt, type Patient } from '@/lib/clinic-data';
 import { loadClinicPatients, type DataSource } from '@/lib/patient-source';
+import { apiFetch } from '@/lib/api';
 
 const FILTERS = [
   { key: 'baixa-atividade', label: 'Baixa atividade', icon: 'foot' },
@@ -45,6 +46,11 @@ function PatientsInner() {
   const [active, setActive] = useState<string[]>(() => (initialFilter ? [initialFilter] : load('ic_filters', [])));
   const [view, setView] = useState<'table' | 'cards'>(() => load('ic_pview', 'table'));
   const [sort, setSort] = useState<'adherence' | 'name' | 'steps' | 'sync'>('adherence');
+  const [showInvite, setShowInvite] = useState(false);
+  const [inviteForm, setInviteForm] = useState({ nome: '', email: '', phone: '', objetivo: '' });
+  const [inviteSaving, setInviteSaving] = useState(false);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -90,8 +96,72 @@ function PatientsInner() {
 
   const open = (id: string) => router.push(`/clinica/pacientes/${id}`);
 
+  async function submitInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteSaving(true);
+    setInviteError(null);
+    try {
+      await apiFetch('/patients', { method: 'POST', body: JSON.stringify(inviteForm) });
+      setInvitedEmail(inviteForm.email);
+      setShowInvite(false);
+      setInviteForm({ nome: '', email: '', phone: '', objetivo: '' });
+      const r = await loadClinicPatients();
+      setAll(r.patients);
+      setSource(r.source);
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : 'Erro ao convidar paciente');
+    } finally {
+      setInviteSaving(false);
+    }
+  }
+
   return (
     <div className="page page-wide">
+      {/* Modal novo paciente */}
+      {showInvite && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'grid', placeItems: 'center', zIndex: 100 }}>
+          <div className="card" style={{ width: '100%', maxWidth: 480, padding: 28 }}>
+            <div className="between" style={{ marginBottom: 20 }}>
+              <h3 style={{ fontWeight: 800, fontSize: 16 }}>Convidar paciente</h3>
+              <button className="icon-btn" onClick={() => setShowInvite(false)}><Icon n="x" size={18} /></button>
+            </div>
+            <form onSubmit={submitInvite} style={{ display: 'grid', gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 600, display: 'block', marginBottom: 5 }}>Nome completo *</label>
+                <input className="input" required placeholder="João Silva" value={inviteForm.nome} onChange={e => setInviteForm(f => ({ ...f, nome: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 600, display: 'block', marginBottom: 5 }}>E-mail *</label>
+                <input className="input" type="email" required placeholder="joao@email.com" value={inviteForm.email} onChange={e => setInviteForm(f => ({ ...f, email: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 600, display: 'block', marginBottom: 5 }}>Telefone</label>
+                <input className="input" placeholder="(11) 99999-0000" value={inviteForm.phone} onChange={e => setInviteForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 600, display: 'block', marginBottom: 5 }}>Objetivo clínico</label>
+                <input className="input" placeholder="Ex: Perda de peso, condicionamento físico" value={inviteForm.objetivo} onChange={e => setInviteForm(f => ({ ...f, objetivo: e.target.value }))} />
+              </div>
+              {inviteError && <p style={{ fontSize: 12.5, color: 'var(--crit)' }}>{inviteError}</p>}
+              <div className="row gap10" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
+                <button type="button" className="btn ghost" onClick={() => setShowInvite(false)}>Cancelar</button>
+                <button type="submit" className="btn primary" disabled={inviteSaving}>
+                  {inviteSaving ? 'Enviando convite…' : <><Icon n="mail" size={15} />Enviar convite</>}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {invitedEmail && (
+        <div className="card card-pad" style={{ marginBottom: 16, background: 'var(--good-soft)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <Icon n="check" size={16} style={{ color: 'var(--good)' }} />
+          <span style={{ fontSize: 13 }}>Convite enviado para <strong>{invitedEmail}</strong>. O paciente receberá um e-mail para criar a senha e conectar o wearable.</span>
+          <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={() => setInvitedEmail(null)}><Icon n="x" size={14} /></button>
+        </div>
+      )}
+
       <div className="between" style={{ marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
         <div>
           <h2 className="page-title">Pacientes</h2>
@@ -108,7 +178,7 @@ function PatientsInner() {
               <Icon n="grid" size={14} /> Cards
             </button>
           </div>
-          <button className="btn primary">
+          <button className="btn primary" onClick={() => { setShowInvite(true); setInviteError(null); }}>
             <Icon n="plus" size={16} />
             Novo paciente
           </button>
