@@ -5,12 +5,13 @@ import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { PatientsModule } from './patients/patients.module';
 import { WearablesModule } from './wearables/wearables.module';
+import { RookModule } from './rook/rook.module';
+import { AiModule } from './ai/ai.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      // carrega o .env da raiz do monorepo (e um .env local do app, se houver)
       envFilePath: ['../../.env', '.env'],
     }),
     SupabaseModule,
@@ -18,6 +19,8 @@ import { WearablesModule } from './wearables/wearables.module';
     HealthModule,
     PatientsModule,
     WearablesModule,
+    RookModule,
+    AiModule,
   ],
 })
 export class AppModule {}
