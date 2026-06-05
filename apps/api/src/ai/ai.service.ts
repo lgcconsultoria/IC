@@ -19,16 +19,23 @@ export interface PatientMetrics {
 @Injectable()
 export class AiService {
   private readonly logger = new Logger(AiService.name);
-  private readonly client: Anthropic;
+  private client: Anthropic | null = null;
 
-  constructor(cfg: ConfigService) {
-    this.client = new Anthropic({ apiKey: cfg.getOrThrow('CLAUDE_API_KEY') });
+  constructor(private cfg: ConfigService) {}
+
+  private getClient(): Anthropic {
+    if (!this.client) {
+      const key = this.cfg.get<string>('CLAUDE_API_KEY');
+      if (!key) throw new Error('CLAUDE_API_KEY não configurado');
+      this.client = new Anthropic({ apiKey: key });
+    }
+    return this.client;
   }
 
   async generateReport(metrics: PatientMetrics): Promise<string> {
     const prompt = this.buildPrompt(metrics);
 
-    const msg = await this.client.messages.create({
+    const msg = await this.getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],

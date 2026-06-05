@@ -11,15 +11,19 @@ export class RookService {
   private readonly logger = new Logger(RookService.name);
   private readonly base: string;
   private readonly connectionsBase: string;
-  private readonly clientUuid: string;
-  private readonly secret: string;
 
   constructor(private cfg: ConfigService) {
     const isProd = cfg.get('ROOK_ENV') === 'production';
     this.base = isProd ? ROOK_PROD : ROOK_SANDBOX;
     this.connectionsBase = isProd ? CONNECTIONS_PROD : CONNECTIONS_SANDBOX;
-    this.clientUuid = cfg.getOrThrow('ROOK_CLIENT_UUID');
-    this.secret = cfg.getOrThrow('ROOK_SECRET');
+  }
+
+  private get clientUuid(): string {
+    return this.cfg.get<string>('ROOK_CLIENT_UUID') ?? '';
+  }
+
+  private get secret(): string {
+    return this.cfg.get<string>('ROOK_SECRET') ?? '';
   }
 
   private get auth() {
