@@ -107,13 +107,38 @@ function PriorityList({ goPatients, goPatient }: { goPatients: () => void; goPat
   );
 }
 
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return 'Bom dia';
+  if (h < 18) return 'Boa tarde';
+  return 'Boa noite';
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState('');
+
   useEffect(() => {
     const t = setTimeout(() => setLoading(false), 650);
+    import('@/lib/api').then(({ apiFetch }) =>
+      apiFetch<{ nome: string }>('/users/me')
+        .then((p) => setUserName(p.nome ? p.nome.split(' ')[0] : ''))
+        .catch(() =>
+          import('@/lib/supabase').then(({ getSupabase }) =>
+            getSupabase().auth.getUser().then(({ data }) => {
+              if (data.user?.email) setUserName(data.user.email.split('@')[0]);
+            })
+          )
+        )
+    );
     return () => clearTimeout(t);
   }, []);
+
   const A = DATA.agg;
   const dist = DATA.adherenceDist;
 
@@ -177,8 +202,8 @@ export default function DashboardPage() {
     <div className="page page-wide">
       <div className="between" style={{ marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
         <div>
-          <div className="eyebrow" style={{ marginBottom: 4 }}>Painel da clínica · 05 jun 2026</div>
-          <h2 className="page-title">Bom dia, Dra. Marina 👋</h2>
+          <div className="eyebrow" style={{ marginBottom: 4 }}>Painel da clínica · {todayLabel()}</div>
+          <h2 className="page-title">{greeting()}{userName ? `, ${userName}` : ''} 👋</h2>
           <div className="muted" style={{ marginTop: 2 }}>{'Visão consolidada de ' + DATA.clinic.totalPatients + ' pacientes monitorados via wearables.'}</div>
         </div>
         <div className="row gap8">
