@@ -26,6 +26,7 @@ export default function PerfilPage() {
   const [form, setForm] = useState<ProfileData>({ nome: '', email: '', phone: '', crm: '', especialidade: '', role: '' });
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [pwForm, setPwForm] = useState({ atual: '', nova: '', confirmar: '' });
   const [pwSaving, setPwSaving] = useState(false);
@@ -49,16 +50,18 @@ export default function PerfilPage() {
   function set(k: keyof ProfileData, v: string) {
     setForm(f => ({ ...f, [k]: v }));
     setSaved(false);
+    setSaveError(null);
   }
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
+    setSaveError(null);
     try {
       await apiFetch('/users/me', { method: 'PATCH', body: JSON.stringify(form) });
       setSaved(true);
-    } catch {
-      // silencia — mostra erro inline futuramente
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Erro ao salvar. Tente novamente.');
     } finally {
       setSaving(false);
     }
@@ -133,7 +136,8 @@ export default function PerfilPage() {
               </select>
             </div>
           </div>
-          <div className="row gap10" style={{ marginTop: 18, justifyContent: 'flex-end' }}>
+          <div className="row gap10" style={{ marginTop: 18, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            {saveError && <span style={{ fontSize: 12.5, color: 'var(--crit)' }}>{saveError}</span>}
             {saved && <span style={{ fontSize: 12.5, color: 'var(--good)', display: 'flex', alignItems: 'center', gap: 6 }}><Icon n="check" size={14} />Salvo!</span>}
             <button type="submit" className="btn primary" disabled={saving}>
               {saving ? <span className="spin" style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} /> : <Icon n="check" size={15} />}

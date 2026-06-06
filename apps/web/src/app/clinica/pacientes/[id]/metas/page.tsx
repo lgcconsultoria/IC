@@ -7,6 +7,7 @@ import { Ring } from '@/components/charts';
 import { Avatar, adhColor } from '@/components/ui';
 import { type Patient } from '@/lib/clinic-data';
 import { loadPatient } from '@/lib/patient-source';
+import { apiFetch } from '@/lib/api';
 
 interface GoalDef {
   key: string;
@@ -31,10 +32,13 @@ const DEFS: GoalDef[] = [
   { key: 'weight', icon: 'scale', label: 'Peso alvo', unit: 'kg', min: 50, max: 110, step: 0.5, color: 'var(--c-weight)', cur: (p) => p.weight, base: (p) => p.weight - 4, invert: true },
 ];
 
-function GoalEditor({ def, p }: { def: GoalDef; p: Patient }) {
-  const [val, setVal] = useState(def.base(p));
+function GoalEditor({
+  def, p, value, onChange,
+}: { def: GoalDef; p: Patient; value: number; onChange: (key: string, v: number) => void }) {
   const cur = def.cur(p);
-  const pct = def.invert ? Math.min(100, Math.round(cur <= val ? 100 : (val / cur) * 100)) : Math.min(100, Math.round((cur / val) * 100));
+  const pct = def.invert
+    ? Math.min(100, Math.round(cur <= value ? 100 : (value / cur) * 100))
+    : Math.min(100, Math.round((cur / value) * 100));
   return (
     <div className="card card-pad">
       <div className="between" style={{ marginBottom: 14 }}>
@@ -48,11 +52,19 @@ function GoalEditor({ def, p }: { def: GoalDef; p: Patient }) {
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
-          <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: def.color }}>{val.toLocaleString('pt-BR')}</div>
+          <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: def.color }}>{value.toLocaleString('pt-BR')}</div>
           <div style={{ fontSize: 10.5, color: 'var(--text-faint)' }}>{'meta ' + def.unit}</div>
         </div>
       </div>
-      <input type="range" min={def.min} max={def.max} step={def.step} value={val} onChange={(e) => setVal(+e.target.value)} style={{ width: '100%', accentColor: def.color, height: 6 }} />
+      <input
+        type="range"
+        min={def.min}
+        max={def.max}
+        step={def.step}
+        value={value}
+        onChange={(e) => onChange(def.key, +e.target.value)}
+        style={{ width: '100%', accentColor: def.color, height: 6 }}
+      />
       <div className="between" style={{ marginTop: 10 }}>
         <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Progresso</span>
         <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: pct >= 100 ? 'var(--good)' : 'var(--text-muted)' }}>{pct + '%'}</span>
@@ -75,17 +87,48 @@ export default function GoalsPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [p, setP] = useState<Patient | null>(null);
+  const [goalValues, setGoalValues] = useState<Record<string, number>>({});
+  const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
     loadPatient(params.id).then((res) => {
-      if (alive) setP(res);
+      if (!alive) return;
+      setP(res);
+      if (res) {
+        const init: Record<string, number> = {};
+        DEFS.forEach((d) => { init[d.key] = d.base(res); });
+        setGoalValues(init);
+      }
     });
-    return () => {
-      alive = false;
-    };
+    return () => { alive = false; };
   }, [params.id]);
+
+  function handleGoalChange(key: string, value: number) {
+    setSaved(false);
+    setSaveError(null);
+    setGoalValues((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function saveGoals() {
+    if (!p) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await apiFetch(`/patients/${p.id}/goals`, {
+        method: 'PATCH',
+        body: JSON.stringify(goalValues),
+      });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2500);
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : 'Erro ao salvar metas');
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!p) {
     return (
@@ -111,11 +154,15 @@ export default function GoalsPage() {
             <div className="muted">Defina e acompanhe as metas semanais prescritas</div>
           </div>
         </div>
-        <div className="row gap8">
-          <button className="btn ghost">Cancelar</button>
-          <button className="btn primary" onClick={() => { setSaved(true); setTimeout(() => setSaved(false), 2000); }}>
-            <Icon n={saved ? 'check' : 'target'} size={16} />
-            {saved ? 'Metas salvas!' : 'Salvar metas'}
+        <div className="row gap8" style={{ alignItems: 'center' }}>
+          {saveError && <span style={{ fontSize: 12, color: 'var(--crit)' }}>{saveError}</span>}
+          {saved && <span style={{ fontSize: 12.5, color: 'var(--good)', display: 'flex', alignItems: 'center', gap: 5 }}><Icon n="check" size={14} />Metas salvas!</span>}
+          <button className="btn ghost" onClick={() => router.push(`/clinica/pacientes/${p.id}`)}>Cancelar</button>
+          <button className="btn primary" onClick={saveGoals} disabled={saving}>
+            {saving
+              ? <span className="spin" style={{ width: 14, height: 14, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+              : <Icon n={saved ? 'check' : 'target'} size={16} />}
+            {saving ? 'Salvando…' : saved ? 'Salvo!' : 'Salvar metas'}
           </button>
         </div>
       </div>
@@ -123,7 +170,13 @@ export default function GoalsPage() {
       <div className="grid" style={{ gridTemplateColumns: '1.7fr 1fr', alignItems: 'start' }}>
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
           {DEFS.map((d) => (
-            <GoalEditor key={d.key} def={d} p={p} />
+            <GoalEditor
+              key={d.key}
+              def={d}
+              p={p}
+              value={goalValues[d.key] ?? d.base(p)}
+              onChange={handleGoalChange}
+            />
           ))}
         </div>
         <div className="grid">

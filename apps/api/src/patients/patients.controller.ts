@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -48,5 +49,14 @@ export class PatientsController {
   @Get(':id/measurements')
   listMeasurements(@CurrentUser() user: AppUser, @Param('id') id: string) {
     return this.patients.listMeasurements(user, id);
+  }
+
+  @Patch(':id/goals')
+  updateGoals(
+    @CurrentUser() user: AppUser,
+    @Param('id') id: string,
+    @Body() goals: Record<string, number>,
+  ) {
+    return this.patients.updateGoals(user, id, goals);
   }
 }

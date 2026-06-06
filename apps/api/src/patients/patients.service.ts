@@ -103,7 +103,7 @@ export class PatientsService {
   async findOne(user: AppUser, patientId: string) {
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo')
+      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo, goals')
       .eq('id', patientId)
       .single();
     if (error || !data) throw new NotFoundException('Paciente não encontrado');
@@ -132,6 +132,19 @@ export class PatientsService {
         obs: dto.obs ?? null,
       })
       .select('id, data, peso_kg, imc, percentual_gordura, circ_cintura')
+      .single();
+    if (error) throw new InternalServerErrorException(error.message);
+    return data;
+  }
+
+  async updateGoals(user: AppUser, patientId: string, goals: Record<string, number>) {
+    await this.findOne(user, patientId);
+    this.assertStaff(user);
+    const { data, error } = await this.db
+      .from('patients')
+      .update({ goals })
+      .eq('id', patientId)
+      .select('id, goals')
       .single();
     if (error) throw new InternalServerErrorException(error.message);
     return data;
