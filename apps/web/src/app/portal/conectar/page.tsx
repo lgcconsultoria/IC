@@ -62,7 +62,12 @@ export default function ConnectWearablePage() {
 
       try {
         const res = await apiFetch<{ data_sources: { data_source: string; authorized: boolean }[] }>('/rook/data-sources');
-        setConnectedSources(res.data_sources.filter((s) => s.authorized).map((s) => s.data_source));
+        // ROOK retorna data_source em caixa variada (ex: "GARMIN", "strava") — normaliza para lowercase
+        setConnectedSources(
+          res.data_sources
+            .filter((s) => s.authorized)
+            .map((s) => s.data_source.toLowerCase())
+        );
       } catch {
         // ignora — sem status de conexão disponível ainda
       }
@@ -176,7 +181,9 @@ export default function ConnectWearablePage() {
 
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(270px,1fr))', marginBottom: 24 }}>
           {(Object.keys(DEVICES) as DeviceKey[]).map((d) => {
-            const connected = connectedSources.includes(DEVICES[d].name);
+            // Compara em lowercase para cobrir variações do ROOK (ex: "GARMIN", "garmin", "Garmin")
+            const connected = connectedSources.includes(d.toLowerCase()) ||
+              connectedSources.includes(DEVICES[d].name.toLowerCase());
             return (
               <div key={d} className="card" style={{ padding: 16, borderColor: connected ? 'var(--accent)' : 'var(--border)', borderWidth: connected ? 1.5 : 1, transition: 'border-color .2s' }}>
                 <div className="between" style={{ marginBottom: 12 }}>
@@ -201,6 +208,11 @@ export default function ConnectWearablePage() {
                     </span>
                   ))}
                 </div>
+                {d === 'strava' && !connected && (
+                  <p style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 8 }}>
+                    Requer conta Strava ativa para autorização OAuth.
+                  </p>
+                )}
               </div>
             );
           })}
