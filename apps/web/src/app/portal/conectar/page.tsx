@@ -28,12 +28,26 @@ const DEV_DATA: Record<DeviceKey, string[]> = {
   google: ['Passos', 'Atividade', 'FC'],
 };
 
+// Mapeia nossa chave de dispositivo para o identificador data_source do ROOK
+const DEVICE_ROOK: Record<DeviceKey, string> = {
+  garmin: 'Garmin',
+  apple: 'Apple Health',
+  samsung: 'Samsung Health',
+  fitbit: 'Fitbit',
+  oura: 'Oura',
+  whoop: 'Whoop',
+  polar: 'Polar',
+  strava: 'Strava',
+  google: 'Google Fit',
+};
+
 export default function ConnectWearablePage() {
   const router = useRouter();
   const [connectionUrl, setConnectionUrl] = useState<string | null>(null);
   const [loadingUrl, setLoadingUrl] = useState(true);
   const [connectedSources, setConnectedSources] = useState<string[]>([]);
   const [userName, setUserName] = useState('');
+  const [connecting, setConnecting] = useState<DeviceKey | null>(null);
 
   useEffect(() => {
     async function init() {
@@ -81,6 +95,27 @@ export default function ConnectWearablePage() {
     if (connectionUrl) window.location.href = connectionUrl;
   }
 
+  // Conecta UM dispositivo específico: pede ao backend a URL OAuth daquele paciente
+  // para aquela fonte de dados (fluxo de produção — nossa própria página de conexão).
+  async function connectDevice(d: DeviceKey) {
+    setConnecting(d);
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const redirectUrl = `${origin}/portal/conectado`;
+    try {
+      const res = await apiFetch<{ authorization_url?: string; authorized?: boolean }>(
+        `/rook/authorizer/${encodeURIComponent(DEVICE_ROOK[d])}?redirect_url=${encodeURIComponent(redirectUrl)}`,
+      );
+      if (res.authorization_url) {
+        window.location.href = res.authorization_url;
+        return;
+      }
+    } catch {
+      // fallback: usa a Connection Page genérica do ROOK com o user_id do paciente
+    }
+    if (connectionUrl) window.location.href = connectionUrl;
+    setConnecting(null);
+  }
+
   const steps: [string, boolean][] = [
     ['Login', true],
     ['Conectar dispositivo', connectedSources.length > 0],
@@ -124,7 +159,7 @@ export default function ConnectWearablePage() {
         </div>
         <h1 style={{ fontSize: 26, fontWeight: 800, letterSpacing: '-0.02em', textAlign: 'center' }}>Conecte seu wearable</h1>
         <p className="muted" style={{ textAlign: 'center', maxWidth: 520, margin: '8px auto 0', lineHeight: 1.6 }}>
-          Clique em <strong>Abrir página de conexão</strong> para autorizar seu dispositivo. Seus dados são enviados de forma segura para sua equipe clínica.
+          Escolha seu dispositivo abaixo e clique em <strong>Conectar</strong> para autorizar. Seus dados são enviados de forma segura para sua equipe clínica.
         </p>
 
         <div className="row gap10" style={{ justifyContent: 'center', margin: '22px 0 28px' }}>
@@ -139,44 +174,6 @@ export default function ConnectWearablePage() {
               {i < arr.length - 1 && <div style={{ width: 26, height: 1.5, background: 'var(--border)' }} />}
             </span>
           ))}
-        </div>
-
-        <div className="card" style={{ padding: 32, textAlign: 'center', marginBottom: 24 }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🔗</div>
-          <h2 style={{ fontSize: 18, fontWeight: 800, marginBottom: 8 }}>Página de Conexão de Dispositivos</h2>
-          <p className="muted" style={{ fontSize: 13, maxWidth: 440, margin: '0 auto 24px', lineHeight: 1.6 }}>
-            Conecte seu Garmin, Polar, Fitbit, Oura, WHOOP e outros dispositivos de forma segura através do ROOK Connect.
-          </p>
-          <div className="row gap8" style={{ justifyContent: 'center', marginBottom: 24, flexWrap: 'wrap' }}>
-            {(['garmin', 'oura', 'polar', 'fitbit', 'whoop'] as DeviceKey[]).map((d) => (
-              <DeviceBadge key={d} device={d} size={36} />
-            ))}
-            <span style={{ fontSize: 12, color: 'var(--text-faint)', alignSelf: 'center' }}>+ mais</span>
-          </div>
-          <button
-            className="btn primary"
-            style={{ minWidth: 220 }}
-            onClick={openRookConnection}
-            disabled={loadingUrl || !connectionUrl}
-          >
-            {loadingUrl ? (
-              <>
-                <span className="spin" style={{ width: 15, height: 15, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
-                Preparando…
-              </>
-            ) : (
-              <>
-                <Icon n="plug" size={16} />
-                Abrir página de conexão
-                <Icon n="arrowRight" size={15} />
-              </>
-            )}
-          </button>
-          {connectionUrl && (
-            <p style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 10 }}>
-              Você será redirecionado para a página segura do ROOK Connect.
-            </p>
-          )}
         </div>
 
         <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(270px,1fr))', marginBottom: 24 }}>
@@ -208,6 +205,21 @@ export default function ConnectWearablePage() {
                     </span>
                   ))}
                 </div>
+                {!connected && (
+                  <button
+                    className="btn ghost sm"
+                    style={{ width: '100%', marginTop: 12 }}
+                    onClick={() => connectDevice(d)}
+                    disabled={connecting !== null}
+                  >
+                    {connecting === d ? (
+                      <span className="spin" style={{ width: 13, height: 13, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                    ) : (
+                      <Icon n="plug" size={14} />
+                    )}
+                    {connecting === d ? 'Conectando…' : 'Conectar ' + DEVICES[d].name}
+                  </button>
+                )}
                 {d === 'strava' && !connected && (
                   <p style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 8 }}>
                     Requer conta Strava ativa para autorização OAuth.
@@ -216,6 +228,31 @@ export default function ConnectWearablePage() {
               </div>
             );
           })}
+        </div>
+
+        <div className="card" style={{ padding: 24, textAlign: 'center', marginBottom: 24 }}>
+          <p className="muted" style={{ fontSize: 13, maxWidth: 440, margin: '0 auto 16px', lineHeight: 1.6 }}>
+            Prefere ver todos os apps de uma vez? Abra a página de conexão completa com sua conta já identificada.
+          </p>
+          <button
+            className="btn ghost"
+            style={{ minWidth: 220 }}
+            onClick={openRookConnection}
+            disabled={loadingUrl || !connectionUrl}
+          >
+            {loadingUrl ? (
+              <>
+                <span className="spin" style={{ width: 15, height: 15, border: '2px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%' }} />
+                Preparando…
+              </>
+            ) : (
+              <>
+                <Icon n="plug" size={16} />
+                Abrir página de conexão completa
+                <Icon n="arrowRight" size={15} />
+              </>
+            )}
+          </button>
         </div>
 
         <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
