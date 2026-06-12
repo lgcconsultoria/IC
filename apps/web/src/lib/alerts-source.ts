@@ -83,6 +83,17 @@ export async function loadAlerts(): Promise<AlertWithPatient[] | null> {
   }
 }
 
+/** Alertas de um paciente específico (para o perfil); null se indisponível. */
+export async function loadPatientAlerts(id: string): Promise<AlertItem[] | null> {
+  try {
+    const rows = await apiFetch<ApiAlert[]>(`/alerts/patient/${id}`);
+    if (!Array.isArray(rows)) return null;
+    return rows.map((a) => mapAlert(a).item);
+  } catch {
+    return null;
+  }
+}
+
 export async function resolveAlert(id: string): Promise<boolean> {
   try {
     await apiFetch(`/alerts/${id}`, {

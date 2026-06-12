@@ -5,10 +5,20 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { LineChart, BarChart, Donut, Ring } from '@/components/charts';
 import { MetricCard, Avatar, adhColor, syncLabel, LoadingSkeleton } from '@/components/ui';
-import { DATA, fmt, byId } from '@/lib/clinic-data';
+import { DATA, fmt, type Patient } from '@/lib/clinic-data';
+import { loadClinicPatients } from '@/lib/patient-source';
+import { loadAlerts } from '@/lib/alerts-source';
 
-function KpiStrip({ goPatients, goAlerts }: { goPatients: (f?: string) => void; goAlerts: () => void }) {
-  const c = DATA.clinic;
+interface ClinicStats {
+  totalPatients: number;
+  activePatients: number;
+  noSync: number;
+  lowAdherence: number;
+  critAlerts: number;
+  weeklyEvolution: number;
+}
+
+function KpiStrip({ c, goPatients, goAlerts }: { c: ClinicStats; goPatients: (f?: string) => void; goAlerts: () => void }) {
   const kpis = [
     { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', trend: 4, sub: '3 novos esta semana' },
     { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', trend: 6, sub: 'sincronizando < 48h' },
@@ -42,8 +52,8 @@ function ChartCard({ title, sub, right, children, legend }: { title: ReactNode; 
   );
 }
 
-function PriorityList({ goPatients, goPatient }: { goPatients: () => void; goPatient: (id: string) => void }) {
-  const ps = [...DATA.patients].sort((a, b) => a.adherence - b.adherence || b.alertCount - a.alertCount).slice(0, 5);
+function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]; goPatients: () => void; goPatient: (id: string) => void }) {
+  const ps = [...patients].sort((a, b) => a.adherence - b.adherence || b.alertCount - a.alertCount).slice(0, 5);
   return (
     <div className="card">
       <div className="between" style={{ padding: '16px 18px 12px' }}>
@@ -122,9 +132,10 @@ export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
+  const [patients, setPatients] = useState<Patient[]>(DATA.patients);
+  const [stats, setStats] = useState<ClinicStats>(DATA.clinic);
 
   useEffect(() => {
-    const t = setTimeout(() => setLoading(false), 650);
     import('@/lib/api').then(({ apiFetch }) =>
       apiFetch<{ nome: string }>('/users/me')
         .then((p) => setUserName(p.nome ? p.nome.split(' ')[0] : ''))
@@ -136,7 +147,24 @@ export default function DashboardPage() {
           )
         )
     );
-    return () => clearTimeout(t);
+
+    // pacientes e alertas reais (com fallback demo)
+    Promise.all([loadClinicPatients(), loadAlerts()]).then(([pr, alerts]) => {
+      const ps = pr.patients;
+      const critReais = alerts
+        ? alerts.filter((a) => a.item.level === 'crit' && a.item.status === 'open').length
+        : null;
+      setPatients(ps);
+      setStats({
+        totalPatients: ps.length,
+        activePatients: ps.filter((p) => p.syncHours <= 48).length,
+        noSync: ps.filter((p) => p.syncHours > 48).length,
+        lowAdherence: ps.filter((p) => p.adherence < 50).length,
+        critAlerts: critReais ?? DATA.clinic.critAlerts,
+        weeklyEvolution: DATA.clinic.weeklyEvolution,
+      });
+      setLoading(false);
+    }).catch(() => setLoading(false));
   }, []);
 
   const A = DATA.agg;
@@ -155,7 +183,7 @@ export default function DashboardPage() {
           <BarChart data={A.calories} color="var(--c-cal)" height={140} unit=" kcal" />
         </ChartCard>
       </div>
-      <ChartCard title="Distribuição de aderência" sub={DATA.clinic.totalPatients + ' pacientes'}>
+      <ChartCard title="Distribuição de aderência" sub={stats.totalPatients + ' pacientes'}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '6px 0' }}>
           <div style={{ position: 'relative' }}>
             <Donut segments={dist} size={150} stroke={20} />
@@ -204,7 +232,7 @@ export default function DashboardPage() {
         <div>
           <div className="eyebrow" style={{ marginBottom: 4 }}>Painel da clínica · {todayLabel()}</div>
           <h2 className="page-title">{greeting()}{userName ? `, ${userName}` : ''} 👋</h2>
-          <div className="muted" style={{ marginTop: 2 }}>{'Visão consolidada de ' + DATA.clinic.totalPatients + ' pacientes monitorados via wearables.'}</div>
+          <div className="muted" style={{ marginTop: 2 }}>{'Visão consolidada de ' + stats.totalPatients + ' pacientes monitorados via wearables.'}</div>
         </div>
         <div className="row gap8">
           <div className="seg">
@@ -224,10 +252,10 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid fade-in">
-          <KpiStrip goPatients={goPatients} goAlerts={() => router.push('/clinica/alertas')} />
+          <KpiStrip c={stats} goPatients={goPatients} goAlerts={() => router.push('/clinica/alertas')} />
           {charts}
           <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
-            <PriorityList goPatients={() => router.push('/clinica/pacientes')} goPatient={goPatient} />
+            <PriorityList patients={patients} goPatients={() => router.push('/clinica/pacientes')} goPatient={goPatient} />
             {sleepCard}
           </div>
         </div>

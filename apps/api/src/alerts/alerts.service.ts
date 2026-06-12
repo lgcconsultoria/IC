@@ -57,6 +57,26 @@ export class AlertsService {
     }));
   }
 
+  /** Alertas de um paciente específico (equipe da clínica). */
+  async listForPatient(user: AppUser, patientId: string) {
+    this.assertStaff(user);
+    const { data: pat } = await this.db
+      .from('patients')
+      .select('id, clinic_id')
+      .eq('id', patientId)
+      .single();
+    if (!pat || pat.clinic_id !== user.clinicId) {
+      throw new NotFoundException('Paciente não encontrado');
+    }
+    const { data, error } = await this.db
+      .from('alerts')
+      .select('id, patient_id, tipo, severidade, mensagem, status, data')
+      .eq('patient_id', patientId)
+      .order('data', { ascending: false });
+    if (error) throw new InternalServerErrorException(error.message);
+    return data ?? [];
+  }
+
   /** Atualiza o status de um alerta (visto/resolvido), restrito à clínica. */
   async updateStatus(
     user: AppUser,

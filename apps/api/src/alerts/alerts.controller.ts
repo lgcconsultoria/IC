@@ -31,6 +31,11 @@ export class AlertsController {
     return this.alerts.listForClinic(user);
   }
 
+  @Get('patient/:id')
+  listForPatient(@CurrentUser() user: AppUser, @Param('id') id: string) {
+    return this.alerts.listForPatient(user, id);
+  }
+
   @Post('refresh')
   refresh(@CurrentUser() user: AppUser) {
     return this.alerts.refresh(user);

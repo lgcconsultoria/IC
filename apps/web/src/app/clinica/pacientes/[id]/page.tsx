@@ -16,8 +16,9 @@ import {
   Trend,
   syncLabel,
 } from '@/components/ui';
-import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint } from '@/lib/clinic-data';
+import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint, type AlertItem } from '@/lib/clinic-data';
 import { loadPatient, loadPatientWearables, applyRealWearables } from '@/lib/patient-source';
+import { loadPatientAlerts } from '@/lib/alerts-source';
 
 function Stat({ label, value, unit, trend, invert, color }: { label: string; value: ReactNode; unit?: string; trend?: number; invert?: boolean; color?: string }) {
   return (
@@ -69,11 +70,13 @@ export default function ProfilePage() {
   const [tab, setTab] = useState('overview');
   const [reporting, setReporting] = useState(false);
   const [realData, setRealData] = useState(false);
+  const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     setRealData(false);
+    setAlerts(null);
     loadPatient(id).then(async (res) => {
       if (!alive) return;
       if (res) {
@@ -86,6 +89,10 @@ export default function ProfilePage() {
         } else {
           setP(res);
         }
+        // alertas reais do paciente (fallback demo)
+        const al = await loadPatientAlerts(id);
+        if (!alive) return;
+        setAlerts(al);
       } else {
         setP(res);
       }
@@ -119,7 +126,7 @@ export default function ProfilePage() {
     );
   }
 
-  const myAlerts = DATA.alerts.filter((a) => a.patient === p.id);
+  const myAlerts = alerts ?? DATA.alerts.filter((a) => a.patient === p.id);
   const bmi = (p.weight / Math.pow(p.heightCm / 100, 2)).toFixed(1);
   const goGoals = () => router.push(`/clinica/pacientes/${p.id}/metas`);
 
@@ -183,7 +190,7 @@ export default function ProfilePage() {
             </div>
             <div className="grid" style={{ gap: 10 }}>
               {myAlerts.map((a) => (
-                <AlertCard key={a.id} a={a} compact />
+                <AlertCard key={a.id} a={a} patient={p} compact />
               ))}
             </div>
           </div>
@@ -309,7 +316,7 @@ export default function ProfilePage() {
       {myAlerts.length > 0 && (
         <div className="grid">
           {myAlerts.map((a) => (
-            <AlertCard key={a.id} a={a} onOpen={() => {}} compact={false} />
+            <AlertCard key={a.id} a={a} patient={p} onOpen={() => {}} compact={false} />
           ))}
         </div>
       )}
