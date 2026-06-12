@@ -148,6 +148,38 @@ export class PatientsService {
     return data;
   }
 
+  /** Série diária de wearables (ROOK) dos últimos `days` dias. */
+  async listWearableDaily(user: AppUser, patientId: string, days = 30) {
+    await this.findOne(user, patientId); // valida acesso
+    const since = new Date();
+    since.setDate(since.getDate() - Math.max(1, Math.min(days, 180)));
+    const { data, error } = await this.db
+      .from('wearable_daily')
+      .select(
+        'data, passos, kcal_gastas, fc_media, fc_max, sono_min, hrv, distancia_m, minutos_ativos, fonte',
+      )
+      .eq('patient_id', patientId)
+      .gte('data', since.toISOString().slice(0, 10))
+      .order('data', { ascending: true });
+    if (error) throw new InternalServerErrorException(error.message);
+    return data;
+  }
+
+  /** Atividades/treinos individuais (ROOK) dos últimos `days` dias. */
+  async listWearableActivities(user: AppUser, patientId: string, days = 30) {
+    await this.findOne(user, patientId); // valida acesso
+    const since = new Date();
+    since.setDate(since.getDate() - Math.max(1, Math.min(days, 180)));
+    const { data, error } = await this.db
+      .from('wearable_activities')
+      .select('id, inicio, fim, tipo, kcal, fc_media, fc_max, distancia_m')
+      .eq('patient_id', patientId)
+      .gte('inicio', since.toISOString())
+      .order('inicio', { ascending: false });
+    if (error) throw new InternalServerErrorException(error.message);
+    return data;
+  }
+
   // ----- helpers -----
   private assertStaff(user: AppUser) {
     if (!isStaff(user)) throw new ForbiddenException('Acesso restrito à equipe');

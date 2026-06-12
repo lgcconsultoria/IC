@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
@@ -48,5 +49,27 @@ export class PatientsController {
   @Get(':id/measurements')
   listMeasurements(@CurrentUser() user: AppUser, @Param('id') id: string) {
     return this.patients.listMeasurements(user, id);
+  }
+
+  @Get(':id/wearable-daily')
+  listWearableDaily(
+    @CurrentUser() user: AppUser,
+    @Param('id') id: string,
+    @Query('days') days?: string,
+  ) {
+    return this.patients.listWearableDaily(user, id, days ? Number(days) : 30);
+  }
+
+  @Get(':id/wearable-activities')
+  listWearableActivities(
+    @CurrentUser() user: AppUser,
+    @Param('id') id: string,
+    @Query('days') days?: string,
+  ) {
+    return this.patients.listWearableActivities(
+      user,
+      id,
+      days ? Number(days) : 30,
+    );
   }
 }

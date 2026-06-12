@@ -17,7 +17,7 @@ import {
   syncLabel,
 } from '@/components/ui';
 import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint } from '@/lib/clinic-data';
-import { loadPatient } from '@/lib/patient-source';
+import { loadPatient, loadPatientWearables, applyRealWearables } from '@/lib/patient-source';
 
 function Stat({ label, value, unit, trend, invert, color }: { label: string; value: ReactNode; unit?: string; trend?: number; invert?: boolean; color?: string }) {
   return (
@@ -68,13 +68,27 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('overview');
   const [reporting, setReporting] = useState(false);
+  const [realData, setRealData] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
-    loadPatient(id).then((res) => {
+    setRealData(false);
+    loadPatient(id).then(async (res) => {
       if (!alive) return;
-      setP(res);
+      if (res) {
+        // tenta sobrepor com dados reais de wearable (ROOK)
+        const rows = await loadPatientWearables(id);
+        if (!alive) return;
+        if (rows.length > 0) {
+          setP(applyRealWearables(res, rows));
+          setRealData(true);
+        } else {
+          setP(res);
+        }
+      } else {
+        setP(res);
+      }
       setLoading(false);
     });
     return () => {
@@ -318,6 +332,10 @@ export default function ProfilePage() {
               <div className="row gap10" style={{ flexWrap: 'wrap' }}>
                 <h2 style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</h2>
                 <PerfBadge perf={p.perf} />
+                <span className={'badge ' + (realData ? 'good' : 'neutral')} title={realData ? 'Métricas reais sincronizadas via wearable' : 'Métricas demonstrativas até a sincronização do wearable'}>
+                  <span className="bdot" />
+                  {realData ? 'dados reais' : 'demonstrativo'}
+                </span>
               </div>
               <div className="row gap12" style={{ marginTop: 6, color: 'var(--text-muted)', fontSize: 12.5, flexWrap: 'wrap' }}>
                 <span className="row gap6">

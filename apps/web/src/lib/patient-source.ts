@@ -1,6 +1,13 @@
 /* IC Clínica — Fonte de pacientes: tenta a API real, cai para demo. */
 import { apiFetch } from './api';
-import { DATA, synthPatient, byId, type Patient, type ApiPatientLike } from './clinic-data';
+import {
+  DATA,
+  synthPatient,
+  byId,
+  type Patient,
+  type ApiPatientLike,
+  type SeriesPoint,
+} from './clinic-data';
 
 interface ApiPatientRow {
   id: string;
@@ -59,4 +66,98 @@ export async function loadPatient(id: string): Promise<Patient | null> {
     /* ignore */
   }
   return null;
+}
+
+// ----- Wearables reais (ROOK) -------------------------------------------------
+
+export interface WearableDailyRow {
+  data: string;
+  passos: number | null;
+  kcal_gastas: number | null;
+  fc_media: number | null;
+  fc_max: number | null;
+  sono_min: number | null;
+  hrv: number | null;
+  minutos_ativos: number | null;
+}
+
+/** Busca a série diária real de wearables; [] se não houver/indisponível. */
+export async function loadPatientWearables(
+  id: string,
+  days = 30,
+): Promise<WearableDailyRow[]> {
+  try {
+    const rows = await apiFetch<WearableDailyRow[]>(
+      `/patients/${id}/wearable-daily?days=${days}`,
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function toSeries(
+  rows: WearableDailyRow[],
+  pick: (r: WearableDailyRow) => number | null,
+  transform?: (v: number) => number,
+): SeriesPoint[] {
+  return rows
+    .filter((r) => pick(r) != null)
+    .map((r) => {
+      const raw = pick(r) as number;
+      const v = transform ? transform(raw) : raw;
+      const d = new Date(r.data + 'T00:00:00');
+      return { date: r.data, day: d.getDay(), value: v };
+    });
+}
+
+function avgLast(s: SeriesPoint[], n: number): number {
+  const slice = s.slice(-n);
+  if (slice.length === 0) return 0;
+  return slice.reduce((a, p) => a + p.value, 0) / slice.length;
+}
+
+/**
+ * Sobrepõe os dados sintéticos com os dados REAIS de wearable quando existem.
+ * Cada série só é substituída se houver pontos reais; resumo recalculado.
+ */
+export function applyRealWearables(
+  p: Patient,
+  rows: WearableDailyRow[],
+): Patient {
+  if (rows.length === 0) return p;
+  const steps = toSeries(rows, (r) => r.passos);
+  const calories = toSeries(rows, (r) => r.kcal_gastas);
+  const sleep = toSeries(rows, (r) => r.sono_min, (v) => +(v / 60).toFixed(1));
+  const hr = toSeries(rows, (r) => r.fc_media);
+  const hrv = toSeries(rows, (r) => r.hrv);
+
+  const s = {
+    ...p.s,
+    ...(steps.length ? { steps } : {}),
+    ...(calories.length ? { calories } : {}),
+    ...(sleep.length ? { sleep } : {}),
+    ...(hr.length ? { hr } : {}),
+    ...(hrv.length ? { hrv } : {}),
+  };
+
+  const last = rows[rows.length - 1]!;
+  const lastSync = new Date(last.data + 'T00:00:00');
+  const syncHours = Math.max(
+    0,
+    Math.round((Date.now() - lastSync.getTime()) / 3_600_000),
+  );
+
+  return {
+    ...p,
+    s,
+    steps: steps.length ? Math.round(avgLast(steps, 7)) : p.steps,
+    calories: calories.length
+      ? Math.round(avgLast(calories, 7) * 7)
+      : p.calories,
+    sleep: sleep.length ? +avgLast(sleep, 7).toFixed(1) : p.sleep,
+    restingHr: hr.length ? Math.round(avgLast(hr, 7)) : p.restingHr,
+    hrv: hrv.length ? Math.round(avgLast(hrv, 7)) : p.hrv,
+    syncHours,
+  };
 }
