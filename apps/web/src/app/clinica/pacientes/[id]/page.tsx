@@ -476,6 +476,10 @@ export default function ProfilePage() {
                 <Icon n="target" size={16} />
                 Metas
               </button>
+              <button className="btn ghost" onClick={() => router.push(`/clinica/pacientes/${p.id}/nutricao`)}>
+                <Icon n="flame" size={16} />
+                Nutrição
+              </button>
             </div>
           </div>
         </div>

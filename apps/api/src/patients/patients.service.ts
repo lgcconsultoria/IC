@@ -101,6 +101,18 @@ export class PatientsService {
     return patient;
   }
 
+  /** Paciente vinculado ao usuário logado (portal do paciente). */
+  async findMine(user: AppUser) {
+    const { data, error } = await this.db
+      .from('patients')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(error.message);
+    if (!data) throw new NotFoundException('Paciente não encontrado para este usuário');
+    return data;
+  }
+
   async findOne(user: AppUser, patientId: string) {
     const { data, error } = await this.db
       .from('patients')

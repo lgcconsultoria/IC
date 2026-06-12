@@ -4,7 +4,11 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // limite maior p/ aceitar fotos (base64) no endpoint de análise de refeição
+  const { json, urlencoded } = await import('express');
+  app.use(json({ limit: '12mb' }));
+  app.use(urlencoded({ extended: true, limit: '12mb' }));
 
   app.setGlobalPrefix('api');
   app.useGlobalPipes(

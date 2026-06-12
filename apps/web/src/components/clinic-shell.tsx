@@ -37,6 +37,7 @@ const NAV: NavGroup[] = [
     sec: 'Portal do paciente',
     items: [
       { href: '/portal/conectar', label: 'Conectar wearable', icon: 'plug', match: (p) => p.startsWith('/portal/conectar') },
+      { href: '/portal/refeicao', label: 'Registrar refeição', icon: 'flame', match: (p) => p.startsWith('/portal/refeicao') },
       { href: '/portal/login', label: 'Login do paciente', icon: 'user', match: (p) => p.startsWith('/portal/login') },
     ],
   },

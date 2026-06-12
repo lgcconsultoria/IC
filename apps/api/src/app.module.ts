@@ -8,6 +8,7 @@ import { RookModule } from './rook/rook.module';
 import { AiModule } from './ai/ai.module';
 import { UsersModule } from './users/users.module';
 import { AlertsModule } from './alerts/alerts.module';
+import { NutritionModule } from './nutrition/nutrition.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { AlertsModule } from './alerts/alerts.module';
     AiModule,
     UsersModule,
     AlertsModule,
+    NutritionModule,
   ],
 })
 export class AppModule {}

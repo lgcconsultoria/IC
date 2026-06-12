@@ -34,6 +34,11 @@ export class PatientsController {
     return this.patients.create(user, dto);
   }
 
+  @Get('me')
+  findMine(@CurrentUser() user: AppUser) {
+    return this.patients.findMine(user);
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: AppUser, @Param('id') id: string) {
     return this.patients.findOne(user, id);

@@ -14,10 +14,13 @@ let appPromise: Promise<express.Express> | null = null;
 
 async function getApp(): Promise<express.Express> {
   const expressApp = express();
+  // limite maior p/ aceitar fotos (base64) na análise de refeição
+  expressApp.use(express.json({ limit: '12mb' }));
+  expressApp.use(express.urlencoded({ extended: true, limit: '12mb' }));
   const nest = await NestFactory.create(
     AppModule,
     new ExpressAdapter(expressApp),
-    { logger: ['error', 'warn'] },
+    { logger: ['error', 'warn'], bodyParser: false },
   );
   nest.setGlobalPrefix('api');
   nest.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
