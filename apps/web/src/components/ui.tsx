@@ -211,9 +211,9 @@ const ALV: Record<string, { cls: string; icon: string; label: string }> = {
   info: { cls: 'info', icon: 'sparkle', label: 'Informativo' },
 };
 
-export function AlertCard({ a, onOpen, onResolve, compact }: { a: AlertItem; onOpen?: (p: Patient) => void; onResolve?: (a: AlertItem) => void; compact?: boolean }) {
+export function AlertCard({ a, patient, onOpen, onResolve, compact }: { a: AlertItem; patient?: Patient; onOpen?: (p: Patient) => void; onResolve?: (a: AlertItem) => void; compact?: boolean }) {
   const m = ALV[a.level]!;
-  const p = byId(a.patient);
+  const p = patient ?? byId(a.patient);
   const [done, setDone] = useState(a.status === 'resolved');
   if (!p) return null;
   return (

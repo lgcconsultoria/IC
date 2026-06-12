@@ -8,6 +8,7 @@ import { WearablesModule } from './wearables/wearables.module';
 import { RookModule } from './rook/rook.module';
 import { AiModule } from './ai/ai.module';
 import { UsersModule } from './users/users.module';
+import { AlertsModule } from './alerts/alerts.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     RookModule,
     AiModule,
     UsersModule,
+    AlertsModule,
   ],
 })
 export class AppModule {}

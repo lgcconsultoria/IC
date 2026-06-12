@@ -1,31 +1,71 @@
 'use client';
-/* IC Clínica — Central de alertas */
-import { useState } from 'react';
+/* IC Clínica — Central de alertas (API real com fallback demo) */
+import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { AlertCard, EmptyState } from '@/components/ui';
-import { DATA, type AlertLevel } from '@/lib/clinic-data';
+import { DATA, type AlertItem, type AlertLevel, type Patient } from '@/lib/clinic-data';
+import { loadAlerts, resolveAlert, refreshAlerts } from '@/lib/alerts-source';
 
 type LevelFilter = AlertLevel | 'all';
+interface Entry { item: AlertItem; patient?: Patient }
 
 export default function AlertsPage() {
   const router = useRouter();
   const [level, setLevel] = useState<LevelFilter>('all');
   const [statusTab, setStatusTab] = useState<'open' | 'resolved'>('open');
-  const [resolved, setResolved] = useState<Set<string>>(() => new Set(DATA.alerts.filter((a) => a.status === 'resolved').map((a) => a.id)));
+  const [entries, setEntries] = useState<Entry[]>([]);
+  const [usingReal, setUsingReal] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [resolved, setResolved] = useState<Set<string>>(new Set());
 
-  const all = DATA.alerts;
-  const levelCounts: Record<LevelFilter, number> = {
-    all: all.filter((a) => !resolved.has(a.id)).length,
-    crit: all.filter((a) => a.level === 'crit' && !resolved.has(a.id)).length,
-    warn: all.filter((a) => a.level === 'warn' && !resolved.has(a.id)).length,
-    info: all.filter((a) => a.level === 'info' && !resolved.has(a.id)).length,
-  };
-  const list = all.filter((a) => {
-    const isResolved = resolved.has(a.id);
+  async function load() {
+    setLoading(true);
+    const real = await loadAlerts();
+    if (real && real.length > 0) {
+      setEntries(real.map((x) => ({ item: x.item, patient: x.patient })));
+      setUsingReal(true);
+      setResolved(new Set(real.filter((x) => x.item.status === 'resolved').map((x) => x.item.id)));
+    } else {
+      setEntries(DATA.alerts.map((a) => ({ item: a })));
+      setUsingReal(false);
+      setResolved(new Set(DATA.alerts.filter((a) => a.status === 'resolved').map((a) => a.id)));
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  async function handleRefresh() {
+    setRefreshing(true);
+    await refreshAlerts();
+    await load();
+    setRefreshing(false);
+  }
+
+  function handleResolve(id: string) {
+    setResolved((s) => new Set([...s, id]));
+    if (usingReal) void resolveAlert(id);
+  }
+
+  const levelCounts = useMemo<Record<LevelFilter, number>>(() => {
+    const open = entries.filter((e) => !resolved.has(e.item.id));
+    return {
+      all: open.length,
+      crit: open.filter((e) => e.item.level === 'crit').length,
+      warn: open.filter((e) => e.item.level === 'warn').length,
+      info: open.filter((e) => e.item.level === 'info').length,
+    };
+  }, [entries, resolved]);
+
+  const list = entries.filter((e) => {
+    const isResolved = resolved.has(e.item.id);
     if (statusTab === 'open' && isResolved) return false;
     if (statusTab === 'resolved' && !isResolved) return false;
-    if (level !== 'all' && a.level !== level) return false;
+    if (level !== 'all' && e.item.level !== level) return false;
     return true;
   });
 
@@ -43,11 +83,21 @@ export default function AlertsPage() {
           <h2 className="page-title">Central de alertas</h2>
           <div className="muted" style={{ marginTop: 2 }}>
             {levelCounts.crit + ' críticos · ' + levelCounts.warn + ' de atenção · ' + levelCounts.info + ' informativos'}
+            <span className={'badge ' + (usingReal ? 'good' : 'neutral')} style={{ marginLeft: 8 }}>
+              <span className="bdot" />
+              {usingReal ? 'tempo real' : 'demonstrativo'}
+            </span>
           </div>
         </div>
-        <div className="seg">
-          <button className={statusTab === 'open' ? 'active' : ''} onClick={() => setStatusTab('open')}>Abertos</button>
-          <button className={statusTab === 'resolved' ? 'active' : ''} onClick={() => setStatusTab('resolved')}>Resolvidos</button>
+        <div className="row gap8">
+          <button className="btn ghost sm" onClick={handleRefresh} disabled={refreshing}>
+            <Icon n="sync" size={15} />
+            {refreshing ? 'Atualizando…' : 'Gerar alertas'}
+          </button>
+          <div className="seg">
+            <button className={statusTab === 'open' ? 'active' : ''} onClick={() => setStatusTab('open')}>Abertos</button>
+            <button className={statusTab === 'resolved' ? 'active' : ''} onClick={() => setStatusTab('resolved')}>Resolvidos</button>
+          </div>
         </div>
       </div>
 
@@ -70,7 +120,13 @@ export default function AlertsPage() {
         ))}
       </div>
 
-      {list.length === 0 ? (
+      {loading ? (
+        <div className="grid" style={{ gap: 12 }}>
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="card card-pad"><div className="skel" style={{ height: 60 }} /></div>
+          ))}
+        </div>
+      ) : list.length === 0 ? (
         <div className="card">
           <EmptyState
             icon={statusTab === 'resolved' ? 'check' : 'shield'}
@@ -84,12 +140,13 @@ export default function AlertsPage() {
         </div>
       ) : (
         <div className="grid stagger" style={{ gap: 12 }}>
-          {list.map((a) => (
+          {list.map((e) => (
             <AlertCard
-              key={a.id}
-              a={{ ...a, status: resolved.has(a.id) ? 'resolved' : 'open' }}
+              key={e.item.id}
+              a={{ ...e.item, status: resolved.has(e.item.id) ? 'resolved' : 'open' }}
+              patient={e.patient}
               onOpen={(pp) => router.push(`/clinica/pacientes/${pp.id}`)}
-              onResolve={(aa) => setResolved((s) => new Set([...s, aa.id]))}
+              onResolve={(aa) => handleResolve(aa.id)}
             />
           ))}
         </div>
