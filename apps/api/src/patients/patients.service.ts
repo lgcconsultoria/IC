@@ -11,6 +11,7 @@ import { SUPABASE_ADMIN } from '../supabase/supabase.module';
 import { AppUser, isStaff } from '../auth/app-user';
 import type { CreatePatientDto } from './dto/create-patient.dto';
 import type { CreateMeasurementDto } from './dto/create-measurement.dto';
+import type { UpdateGoalsDto } from './dto/update-goals.dto';
 
 /**
  * Regras de acesso aplicadas em código (o client admin faz bypass de RLS):
@@ -176,6 +177,48 @@ export class PatientsService {
       .eq('patient_id', patientId)
       .gte('inicio', since.toISOString())
       .order('inicio', { ascending: false });
+    if (error) throw new InternalServerErrorException(error.message);
+    return data;
+  }
+
+  /** Metas prescritas do paciente (null se ainda não definidas). */
+  async getGoals(user: AppUser, patientId: string) {
+    await this.findOne(user, patientId);
+    const { data, error } = await this.db
+      .from('patient_goals')
+      .select(
+        'meta_passos, meta_kcal, meta_treinos, meta_min_ativos, meta_sono_h, meta_peso_kg, updated_at',
+      )
+      .eq('patient_id', patientId)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(error.message);
+    return data;
+  }
+
+  /** Cria/atualiza as metas do paciente (somente equipe). */
+  async saveGoals(user: AppUser, patientId: string, dto: UpdateGoalsDto) {
+    await this.findOne(user, patientId);
+    this.assertStaff(user);
+    const { data, error } = await this.db
+      .from('patient_goals')
+      .upsert(
+        {
+          patient_id: patientId,
+          meta_passos: dto.metaPassos ?? null,
+          meta_kcal: dto.metaKcal ?? null,
+          meta_treinos: dto.metaTreinos ?? null,
+          meta_min_ativos: dto.metaMinAtivos ?? null,
+          meta_sono_h: dto.metaSonoH ?? null,
+          meta_peso_kg: dto.metaPesoKg ?? null,
+          updated_by: user.id,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'patient_id' },
+      )
+      .select(
+        'meta_passos, meta_kcal, meta_treinos, meta_min_ativos, meta_sono_h, meta_peso_kg, updated_at',
+      )
+      .single();
     if (error) throw new InternalServerErrorException(error.message);
     return data;
   }

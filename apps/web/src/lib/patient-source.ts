@@ -161,3 +161,49 @@ export function applyRealWearables(
     syncHours,
   };
 }
+
+// ----- Metas (patient_goals) --------------------------------------------------
+
+export interface PatientGoals {
+  meta_passos: number | null;
+  meta_kcal: number | null;
+  meta_treinos: number | null;
+  meta_min_ativos: number | null;
+  meta_sono_h: number | null;
+  meta_peso_kg: number | null;
+  updated_at?: string;
+}
+
+export interface GoalsInput {
+  metaPassos?: number;
+  metaKcal?: number;
+  metaTreinos?: number;
+  metaMinAtivos?: number;
+  metaSonoH?: number;
+  metaPesoKg?: number;
+}
+
+/** Carrega as metas prescritas; null se não houver/indisponível. */
+export async function loadGoals(id: string): Promise<PatientGoals | null> {
+  try {
+    return await apiFetch<PatientGoals | null>(`/patients/${id}/goals`);
+  } catch {
+    return null;
+  }
+}
+
+/** Persiste as metas; true em caso de sucesso. */
+export async function saveGoals(
+  id: string,
+  goals: GoalsInput,
+): Promise<boolean> {
+  try {
+    await apiFetch(`/patients/${id}/goals`, {
+      method: 'PUT',
+      body: JSON.stringify(goals),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}

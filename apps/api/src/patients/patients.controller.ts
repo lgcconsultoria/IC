@@ -4,6 +4,7 @@ import {
   Get,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -14,6 +15,7 @@ import type { AppUser } from '../auth/app-user';
 import { PatientsService } from './patients.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { CreateMeasurementDto } from './dto/create-measurement.dto';
+import { UpdateGoalsDto } from './dto/update-goals.dto';
 
 @ApiTags('patients')
 @ApiBearerAuth()
@@ -71,5 +73,19 @@ export class PatientsController {
       id,
       days ? Number(days) : 30,
     );
+  }
+
+  @Get(':id/goals')
+  getGoals(@CurrentUser() user: AppUser, @Param('id') id: string) {
+    return this.patients.getGoals(user, id);
+  }
+
+  @Put(':id/goals')
+  saveGoals(
+    @CurrentUser() user: AppUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateGoalsDto,
+  ) {
+    return this.patients.saveGoals(user, id, dto);
   }
 }
