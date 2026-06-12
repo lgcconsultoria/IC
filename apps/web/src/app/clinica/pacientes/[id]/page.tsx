@@ -17,7 +17,7 @@ import {
   syncLabel,
 } from '@/components/ui';
 import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint, type AlertItem } from '@/lib/clinic-data';
-import { loadPatient, loadPatientWearables, applyRealWearables, loadMeasurements, applyRealWeight } from '@/lib/patient-source';
+import { loadPatient, loadPatientWearables, applyRealWearables, loadMeasurements, applyRealWeight, createMeasurement } from '@/lib/patient-source';
 import { loadPatientAlerts } from '@/lib/alerts-source';
 
 function Stat({ label, value, unit, trend, invert, color }: { label: string; value: ReactNode; unit?: string; trend?: number; invert?: boolean; color?: string }) {
@@ -47,6 +47,82 @@ function ChartBox({ title, sub, color, data, goal, unit, kind = 'line', fmtV, ta
         {tag}
       </div>
       {kind === 'bar' ? <BarChart data={data} color={color} height={150} unit={unit} goal={goal} fmtV={fmtV} /> : <LineChart data={data} color={color} height={150} unit={unit} goal={goal} fmtV={fmtV} />}
+    </div>
+  );
+}
+
+function MeasurementForm({ patientId, onSaved }: { patientId: string; onSaved: () => void }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const [open, setOpen] = useState(false);
+  const [data, setData] = useState(today);
+  const [peso, setPeso] = useState('');
+  const [gordura, setGordura] = useState('');
+  const [cintura, setCintura] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<'idle' | 'ok' | 'err'>('idle');
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setMsg('idle');
+    const ok = await createMeasurement(patientId, {
+      data,
+      pesoKg: peso ? +peso : undefined,
+      percentualGordura: gordura ? +gordura : undefined,
+      circCintura: cintura ? +cintura : undefined,
+    });
+    setSaving(false);
+    setMsg(ok ? 'ok' : 'err');
+    if (ok) {
+      setPeso('');
+      setGordura('');
+      setCintura('');
+      onSaved();
+      setTimeout(() => { setMsg('idle'); setOpen(false); }, 1200);
+    }
+  }
+
+  const field = { flex: 1, minWidth: 90, padding: '9px 11px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 } as const;
+
+  return (
+    <div className="card card-pad">
+      <div className="between">
+        <div className="section-title" style={{ fontSize: 15 }}>Registrar medição</div>
+        <button className="btn ghost sm" onClick={() => setOpen((o) => !o)}>
+          <Icon n={open ? 'chevR' : 'plus'} size={15} />
+          {open ? 'Fechar' : 'Nova medição'}
+        </button>
+      </div>
+      {open && (
+        <form onSubmit={submit} className="fade-in" style={{ marginTop: 14, display: 'grid', gap: 10 }}>
+          <div className="row gap8" style={{ flexWrap: 'wrap' }}>
+            <label style={{ flex: 1, minWidth: 90 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Data</div>
+              <input type="date" value={data} onChange={(e) => setData(e.target.value)} required style={field} />
+            </label>
+            <label style={{ flex: 1, minWidth: 90 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Peso (kg)</div>
+              <input type="number" step="0.1" inputMode="decimal" value={peso} onChange={(e) => setPeso(e.target.value)} placeholder="78.4" style={field} />
+            </label>
+            <label style={{ flex: 1, minWidth: 90 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>% gordura</div>
+              <input type="number" step="0.1" inputMode="decimal" value={gordura} onChange={(e) => setGordura(e.target.value)} placeholder="22.5" style={field} />
+            </label>
+            <label style={{ flex: 1, minWidth: 90 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 4 }}>Cintura (cm)</div>
+              <input type="number" step="0.1" inputMode="decimal" value={cintura} onChange={(e) => setCintura(e.target.value)} placeholder="84" style={field} />
+            </label>
+          </div>
+          <div className="row gap8" style={{ alignItems: 'center' }}>
+            <button type="submit" className="btn primary sm" disabled={saving || !peso}>
+              <Icon n={msg === 'ok' ? 'check' : 'scale'} size={15} />
+              {saving ? 'Salvando…' : msg === 'ok' ? 'Registrada!' : 'Salvar medição'}
+            </button>
+            {msg === 'err' && <span style={{ fontSize: 12, color: 'var(--crit)' }}>Falha ao salvar</span>}
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>O IMC é calculado automaticamente a partir da altura.</span>
+          </div>
+        </form>
+      )}
     </div>
   );
 }
@@ -134,6 +210,11 @@ export default function ProfilePage() {
   const myAlerts = alerts ?? DATA.alerts.filter((a) => a.patient === p.id);
   const bmi = (p.weight / Math.pow(p.heightCm / 100, 2)).toFixed(1);
   const goGoals = () => router.push(`/clinica/pacientes/${p.id}/metas`);
+
+  async function reloadWeight() {
+    const meas = await loadMeasurements(id);
+    if (meas.length > 0) setP((prev) => (prev ? applyRealWeight(prev, meas) : prev));
+  }
 
   const overview = (
     <div className="grid" style={{ gridTemplateColumns: '1.6fr 1fr', alignItems: 'start' }}>
@@ -271,6 +352,7 @@ export default function ProfilePage() {
 
   const body = (
     <div className="grid">
+      <MeasurementForm patientId={p.id} onSaved={reloadWeight} />
       <ChartBox title="Evolução de peso" sub="kg · 30 dias" color="var(--c-weight)" data={p.s.weight} fmtV={(v) => v + ' kg'} />
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
         {([['Peso atual', p.weight + ' kg', -1.1], ['IMC', bmi, -0.3], ['Altura', p.heightCm + ' cm', null], ['Meta de peso', p.weight - 4 + ' kg', null]] as [string, string, number | null][]).map((s, i) => (

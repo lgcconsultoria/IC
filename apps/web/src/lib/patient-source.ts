@@ -179,6 +179,30 @@ export async function loadMeasurements(id: string): Promise<MeasurementRow[]> {
   }
 }
 
+export interface NewMeasurement {
+  data: string;
+  pesoKg?: number;
+  percentualGordura?: number;
+  circCintura?: number;
+  obs?: string;
+}
+
+/** Registra uma nova medição; true em caso de sucesso. */
+export async function createMeasurement(
+  id: string,
+  m: NewMeasurement,
+): Promise<boolean> {
+  try {
+    await apiFetch(`/patients/${id}/measurements`, {
+      method: 'POST',
+      body: JSON.stringify(m),
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** Sobrepõe a série de peso com medições reais quando existem. */
 export function applyRealWeight(p: Patient, rows: MeasurementRow[]): Patient {
   const w = rows
