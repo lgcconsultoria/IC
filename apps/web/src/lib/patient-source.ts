@@ -162,6 +162,35 @@ export function applyRealWearables(
   };
 }
 
+// ----- Medições (peso real) ---------------------------------------------------
+
+export interface MeasurementRow {
+  data: string;
+  peso_kg: number | null;
+  imc: number | null;
+}
+
+export async function loadMeasurements(id: string): Promise<MeasurementRow[]> {
+  try {
+    const rows = await apiFetch<MeasurementRow[]>(`/patients/${id}/measurements`);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Sobrepõe a série de peso com medições reais quando existem. */
+export function applyRealWeight(p: Patient, rows: MeasurementRow[]): Patient {
+  const w = rows
+    .filter((r) => r.peso_kg != null)
+    .map((r) => {
+      const d = new Date(r.data + 'T00:00:00');
+      return { date: r.data, day: d.getDay(), value: r.peso_kg as number };
+    });
+  if (w.length === 0) return p;
+  return { ...p, s: { ...p.s, weight: w }, weight: w[w.length - 1]!.value };
+}
+
 // ----- Metas (patient_goals) --------------------------------------------------
 
 export interface PatientGoals {

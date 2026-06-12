@@ -89,6 +89,7 @@ export default function GoalsPage() {
   const [vals, setVals] = useState<Record<string, number>>({});
   const [saving, setSaving] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saved' | 'error'>('idle');
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -107,6 +108,15 @@ export default function GoalsPage() {
           const v = goals[API_SNAKE[d.api]];
           if (v != null) base[d.key] = Number(v);
         });
+        if (goals.updated_at) {
+          setLastUpdate(
+            new Date(goals.updated_at).toLocaleDateString('pt-BR', {
+              day: '2-digit',
+              month: 'short',
+              year: 'numeric',
+            }),
+          );
+        }
       }
       if (!alive) return;
       setP(res);
@@ -128,6 +138,11 @@ export default function GoalsPage() {
     const ok = await saveGoals(p.id, payload);
     setSaving(false);
     setSaveState(ok ? 'saved' : 'error');
+    if (ok) {
+      setLastUpdate(
+        new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' }),
+      );
+    }
     setTimeout(() => setSaveState('idle'), 2500);
   }
 
@@ -191,7 +206,15 @@ export default function GoalsPage() {
             <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 14, lineHeight: 1.5 }}>Metas equilibradas aumentam a chance de adesão. Evite saltos maiores que 20% por ciclo.</p>
           </div>
           <div className="card card-pad">
-            <div className="section-title" style={{ fontSize: 14.5, marginBottom: 14 }}>Histórico de metas</div>
+            <div className="between" style={{ marginBottom: 14 }}>
+              <div className="section-title" style={{ fontSize: 14.5 }}>Histórico de metas</div>
+              <span className="badge neutral">exemplo</span>
+            </div>
+            {lastUpdate && (
+              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 12 }}>
+                Última atualização real: <b>{lastUpdate}</b>
+              </div>
+            )}
             <div style={{ display: 'grid', gap: 14 }}>
               {HISTORY.map((h, i) => (
                 <div key={i} className="row gap10" style={{ alignItems: 'flex-start' }}>

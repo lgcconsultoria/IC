@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { Icon } from './icons';
 import { useTheme } from './theme-provider';
 import { DATA } from '@/lib/clinic-data';
+import { loadAlerts } from '@/lib/alerts-source';
 import { getSupabase } from '@/lib/supabase';
 
 interface NavItem {
@@ -140,11 +141,21 @@ export function ClinicShell({ children }: { children: ReactNode }) {
   const [sbOpen, setSbOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
-  const critCount = DATA.alerts.filter((a) => a.level === 'crit' && a.status === 'open').length;
+  const [critCount, setCritCount] = useState(
+    DATA.alerts.filter((a) => a.level === 'crit' && a.status === 'open').length,
+  );
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
       if (!data.user) { router.push('/login'); return; }
+    });
+    // contagem real de alertas críticos abertos (fallback demo)
+    loadAlerts().then((al) => {
+      if (al) {
+        setCritCount(
+          al.filter((a) => a.item.level === 'crit' && a.item.status === 'open').length,
+        );
+      }
     });
     // Load profile name/role from API if available
     import('@/lib/api').then(({ apiFetch }) =>

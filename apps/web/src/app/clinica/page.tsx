@@ -1,6 +1,6 @@
 'use client';
 /* IC Clínica — Dashboard */
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { LineChart, BarChart, Donut, Ring } from '@/components/charts';
@@ -117,6 +117,17 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
   );
 }
 
+function aggregate(patients: Patient[], key: 'steps' | 'calories' | 'sleep') {
+  if (patients.length === 0) return DATA.agg[key];
+  const ref = patients[0]!.s[key];
+  const dec = key === 'sleep';
+  return ref.map((point, idx) => {
+    const sum = patients.reduce((a, p) => a + (p.s[key][idx]?.value ?? 0), 0);
+    const v = sum / patients.length;
+    return { date: point.date, day: point.day, value: dec ? Math.round(v * 10) / 10 : Math.round(v) };
+  });
+}
+
 function greeting() {
   const h = new Date().getHours();
   if (h < 12) return 'Bom dia';
@@ -167,8 +178,24 @@ export default function DashboardPage() {
     }).catch(() => setLoading(false));
   }, []);
 
-  const A = DATA.agg;
-  const dist = DATA.adherenceDist;
+  const A = useMemo(
+    () => ({
+      steps: aggregate(patients, 'steps'),
+      calories: aggregate(patients, 'calories'),
+      sleep: aggregate(patients, 'sleep'),
+    }),
+    [patients],
+  );
+  const dist = useMemo(
+    () => [
+      { label: 'Alta · 80–100', value: patients.filter((p) => p.adherence >= 80).length, color: 'var(--good)' },
+      { label: 'Média · 50–79', value: patients.filter((p) => p.adherence >= 50 && p.adherence < 80).length, color: 'var(--warn)' },
+      { label: 'Baixa · 0–49', value: patients.filter((p) => p.adherence < 50).length, color: 'var(--crit)' },
+    ],
+    [patients],
+  );
+  const avgAdh = patients.length ? Math.round(patients.reduce((a, p) => a + p.adherence, 0) / patients.length) : 67;
+  const avgSleep = patients.length ? (patients.reduce((a, p) => a + p.sleep, 0) / patients.length).toFixed(1) : '7.0';
 
   const goPatients = (f?: string) => router.push('/clinica/pacientes' + (f ? `?filter=${f}` : ''));
   const goPatient = (id: string) => router.push(`/clinica/pacientes/${id}`);
@@ -189,7 +216,7 @@ export default function DashboardPage() {
             <Donut segments={dist} size={150} stroke={20} />
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
               <div>
-                <div className="tnum" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>67</div>
+                <div className="tnum" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>{avgAdh}</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-faint)', fontWeight: 700 }}>média geral</div>
               </div>
             </div>
@@ -214,7 +241,7 @@ export default function DashboardPage() {
     <ChartCard
       title="Sono médio da clínica"
       sub="Horas por noite · 14 dias"
-      right={<span className="badge neutral">7.0h média</span>}
+      right={<span className="badge neutral">{avgSleep}h média</span>}
       legend={
         <div className="row gap16" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-faint)' }}>
           <span className="row gap6"><span style={{ width: 14, height: 2, background: 'var(--c-sleep)', borderRadius: 2 }} />Realizado</span>

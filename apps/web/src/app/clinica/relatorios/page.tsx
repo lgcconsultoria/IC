@@ -146,8 +146,9 @@ function ReportsInner() {
       });
       setAiReport(res.report);
     } catch {
-      // fallback para relatório local se API não disponível
+      // fallback para rascunho local se a IA não estiver disponível
       setAiReport(null);
+      setAiError('IA indisponível no momento — exibindo rascunho gerado localmente.');
     }
     setState('ready');
   }
@@ -256,9 +257,11 @@ function ReportsInner() {
             <div className="card card-pad fade-in report-print" style={{ maxWidth: 760 }}>
               <div className="between" style={{ paddingBottom: 16, borderBottom: '1px solid var(--border)', marginBottom: 18 }}>
                 <div>
-                  <div className="row gap8" style={{ color: 'var(--accent)', marginBottom: 4 }}>
+                  <div className="row gap8" style={{ color: aiReport ? 'var(--accent)' : 'var(--warn)', marginBottom: 4 }}>
                     <Icon n="sparkle" size={15} />
-                    <span className="eyebrow" style={{ color: 'var(--accent)' }}>Relatório gerado por IA</span>
+                    <span className="eyebrow" style={{ color: aiReport ? 'var(--accent)' : 'var(--warn)' }}>
+                      {aiReport ? 'Relatório gerado por IA (Claude)' : 'Rascunho local · IA indisponível'}
+                    </span>
                   </div>
                   <h3 style={{ fontSize: 19, fontWeight: 800 }}>{p.name}</h3>
                   <div style={{ fontSize: 12, color: 'var(--text-faint)' }}>{'Últimos ' + period + ' dias · 29 mai – 05 jun 2026 · IC Clínica'}</div>
@@ -270,6 +273,12 @@ function ReportsInner() {
                   <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>aderência</div>
                 </div>
               </div>
+              {aiError && (
+                <div className="row gap8" style={{ marginBottom: 16, padding: '9px 11px', background: 'var(--warn-soft)', color: 'var(--warn)', borderRadius: 9, fontSize: 12, fontWeight: 600 }}>
+                  <Icon n="warn" size={14} />
+                  {aiError}
+                </div>
+              )}
               {aiReport ? (
                 <div style={{ fontSize: 13.5, lineHeight: 1.75, color: 'var(--text)', marginBottom: 18, whiteSpace: 'pre-wrap' }}>{aiReport}</div>
               ) : (
@@ -284,7 +293,7 @@ function ReportsInner() {
                 <LineChart data={p.s.steps} color="var(--c-steps)" height={110} goal={10000} unit=" passos" />
               </div>
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-                Gerado automaticamente a partir de dados de wearable via Terra API. Este resumo é um apoio à decisão clínica e não substitui a avaliação profissional.
+                Gerado automaticamente a partir de dados de wearable via ROOK. Este resumo é um apoio à decisão clínica e não substitui a avaliação profissional.
               </div>
             </div>
           )

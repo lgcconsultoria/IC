@@ -17,7 +17,7 @@ import {
   syncLabel,
 } from '@/components/ui';
 import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint, type AlertItem } from '@/lib/clinic-data';
-import { loadPatient, loadPatientWearables, applyRealWearables } from '@/lib/patient-source';
+import { loadPatient, loadPatientWearables, applyRealWearables, loadMeasurements, applyRealWeight } from '@/lib/patient-source';
 import { loadPatientAlerts } from '@/lib/alerts-source';
 
 function Stat({ label, value, unit, trend, invert, color }: { label: string; value: ReactNode; unit?: string; trend?: number; invert?: boolean; color?: string }) {
@@ -79,23 +79,28 @@ export default function ProfilePage() {
     setAlerts(null);
     loadPatient(id).then(async (res) => {
       if (!alive) return;
-      if (res) {
-        // tenta sobrepor com dados reais de wearable (ROOK)
-        const rows = await loadPatientWearables(id);
-        if (!alive) return;
-        if (rows.length > 0) {
-          setP(applyRealWearables(res, rows));
-          setRealData(true);
-        } else {
-          setP(res);
-        }
-        // alertas reais do paciente (fallback demo)
-        const al = await loadPatientAlerts(id);
-        if (!alive) return;
-        setAlerts(al);
-      } else {
+      if (!res) {
         setP(res);
+        setLoading(false);
+        return;
       }
+      let merged = res;
+      // dados reais de wearable (ROOK)
+      const rows = await loadPatientWearables(id);
+      if (!alive) return;
+      if (rows.length > 0) {
+        merged = applyRealWearables(merged, rows);
+        setRealData(true);
+      }
+      // peso real (medições da equipe)
+      const meas = await loadMeasurements(id);
+      if (!alive) return;
+      if (meas.length > 0) merged = applyRealWeight(merged, meas);
+      setP(merged);
+      // alertas reais do paciente (fallback demo)
+      const al = await loadPatientAlerts(id);
+      if (!alive) return;
+      setAlerts(al);
       setLoading(false);
     });
     return () => {
