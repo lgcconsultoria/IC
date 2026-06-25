@@ -1,6 +1,6 @@
 /* IC Clínica — Alertas: API real (com nome do paciente) ou demo. */
 import { apiFetch } from './api';
-import { synthPatient, type AlertItem, type AlertLevel, type Patient } from './clinic-data';
+import { apiPatient, type AlertItem, type AlertLevel, type Patient } from './clinic-data';
 
 interface ApiAlert {
   id: string;
@@ -69,7 +69,7 @@ function mapAlert(a: ApiAlert): AlertWithPatient {
     status: a.status === 'resolvido' ? 'resolved' : 'open',
     agoLabel: ago(hours),
   };
-  return { item, patient: synthPatient({ id: a.patient_id, name: a.paciente_nome }) };
+  return { item, patient: apiPatient({ id: a.patient_id, name: a.paciente_nome }) };
 }
 
 /** Carrega os alertas reais; null se indisponível (cai para demo na UI). */

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Icon } from '@/components/icons';
 import { apiFetch } from '@/lib/api';
+import { DEMO } from '@/lib/clinic-data';
 
 interface StaffMember {
   id: string;
@@ -41,7 +42,7 @@ export default function EquipePage() {
   useEffect(() => {
     apiFetch<StaffMember[]>('/users/staff')
       .then(setStaff)
-      .catch(() => setStaff(DEMO_STAFF))
+      .catch(() => setStaff(DEMO ? DEMO_STAFF : []))
       .finally(() => setLoading(false));
   }, []);
 

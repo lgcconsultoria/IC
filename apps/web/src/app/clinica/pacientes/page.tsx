@@ -185,13 +185,13 @@ function PatientsInner() {
         </div>
       </div>
 
-      {!loading && (
-        <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: source === 'api' ? 'var(--good-soft)' : 'var(--surface-2)' }}>
-          <Icon n={source === 'api' ? 'sync' : 'info'} size={15} style={{ color: source === 'api' ? 'var(--good)' : 'var(--text-muted)', flexShrink: 0 }} />
+      {!loading && source !== 'empty' && (
+        <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: source === 'demo' ? 'var(--warn-soft)' : 'var(--surface-2)' }}>
+          <Icon n="info" size={15} style={{ color: source === 'demo' ? 'var(--warn)' : 'var(--text-muted)', flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {source === 'api'
-              ? 'Pacientes carregados da API. Métricas de wearable são demonstrativas até a sincronização via Terra.'
-              : 'Modo demonstração — dados fictícios. Conecte a API e cadastre pacientes para ver dados reais.'}
+            {source === 'demo'
+              ? 'Modo demonstração — dados fictícios (NEXT_PUBLIC_DEMO). Desligue a flag para exibir apenas dados reais.'
+              : 'Pacientes reais da API. As métricas de wearable aparecem aqui depois que o paciente conecta o dispositivo.'}
           </span>
         </div>
       )}
@@ -238,7 +238,21 @@ function PatientsInner() {
         </div>
       </div>
 
-      {list.length === 0 ? (
+      {all.length === 0 && !loading ? (
+        <div className="card">
+          <EmptyState
+            icon="users"
+            title="Nenhum paciente ainda"
+            desc="Convide o primeiro paciente para iniciar o acompanhamento clínico. Ele receberá um e-mail para criar a senha e conectar o wearable."
+            action={
+              <button className="btn primary" style={{ marginTop: 12 }} onClick={() => { setShowInvite(true); setInviteError(null); }}>
+                <Icon n="plus" size={16} />
+                Novo paciente
+              </button>
+            }
+          />
+        </div>
+      ) : list.length === 0 ? (
         <div className="card">
           <EmptyState
             icon="search"
@@ -276,25 +290,31 @@ function PatientsInner() {
                 </tr>
               </thead>
               <tbody>
-                {list.map((p) => (
+                {list.map((p) => {
+                  const dash = <span style={{ color: 'var(--text-faint)' }}>—</span>;
+                  return (
                   <tr key={p.id} onClick={() => open(p.id)}>
                     <td>
                       <div className="row gap10">
                         <Avatar p={p} size={34} />
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 13 }}>{p.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{p.age + ' anos · ' + (p.sex === 'f' ? 'Fem' : 'Masc')}</div>
+                          <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>{p.age > 0 ? p.age + ' anos · ' + (p.sex === 'f' ? 'Fem' : 'Masc') : 'Dados pendentes'}</div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <div className="row gap8">
-                        <DeviceBadge device={p.device} size={26} />
-                        <span style={{ fontSize: 12.5 }} className="hide-sm">{DEVICES[p.device].name}</span>
-                      </div>
+                      {p.hasData ? (
+                        <div className="row gap8">
+                          <DeviceBadge device={p.device} size={26} />
+                          <span style={{ fontSize: 12.5 }} className="hide-sm">{DEVICES[p.device].name}</span>
+                        </div>
+                      ) : dash}
                     </td>
                     <td>
-                      {p.syncHours > 48 ? (
+                      {!p.hasData ? (
+                        <span className="badge neutral"><span className="bdot" />Aguardando</span>
+                      ) : p.syncHours > 48 ? (
                         <span className="badge crit">
                           <span className="bdot" />
                           {syncLabel(p.syncHours)}
@@ -304,26 +324,31 @@ function PatientsInner() {
                       )}
                     </td>
                     <td>
-                      <div className="row gap8">
-                        <Ring value={p.adherence} size={30} stroke={4} color={adhColor(p.adherence)}>
-                          <span className="tnum" style={{ fontSize: 10.5, fontWeight: 800 }}>{p.adherence}</span>
-                        </Ring>
-                      </div>
+                      {p.adherence > 0 ? (
+                        <div className="row gap8">
+                          <Ring value={p.adherence} size={30} stroke={4} color={adhColor(p.adherence)}>
+                            <span className="tnum" style={{ fontSize: 10.5, fontWeight: 800 }}>{p.adherence}</span>
+                          </Ring>
+                        </div>
+                      ) : dash}
                     </td>
                     <td>
-                      <div className="row gap10">
-                        <Sparkline data={p.s.steps} color={adhColor(p.adherence)} width={64} height={24} />
-                        <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{fmt(p.steps)}</span>
-                      </div>
+                      {p.hasData && p.s.steps.length > 0 ? (
+                        <div className="row gap10">
+                          <Sparkline data={p.s.steps} color={adhColor(p.adherence)} width={64} height={24} />
+                          <span className="tnum" style={{ fontSize: 12.5, fontWeight: 600 }}>{fmt(p.steps)}</span>
+                        </div>
+                      ) : dash}
                     </td>
-                    <td className="tnum" style={{ fontWeight: 600 }}>{fmt(p.calories)}</td>
-                    <td className="tnum">{p.workouts}</td>
-                    <td className="tnum" style={{ color: p.sleep < 6.2 ? 'var(--crit)' : 'var(--text)' }}>{p.sleep + 'h'}</td>
+                    <td className="tnum" style={{ fontWeight: 600 }}>{p.hasData ? fmt(p.calories) : dash}</td>
+                    <td className="tnum">{p.hasData ? p.workouts : dash}</td>
+                    <td className="tnum" style={{ color: p.hasData && p.sleep < 6.2 ? 'var(--crit)' : 'var(--text)' }}>{p.hasData ? p.sleep + 'h' : dash}</td>
                     <td>
-                      <PerfBadge perf={p.perf} />
+                      {p.hasData ? <PerfBadge perf={p.perf} /> : <span className="badge neutral">Sem dados</span>}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

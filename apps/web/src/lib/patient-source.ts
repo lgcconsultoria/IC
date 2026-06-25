@@ -2,7 +2,8 @@
 import { apiFetch } from './api';
 import {
   DATA,
-  synthPatient,
+  DEMO,
+  apiPatient,
   byId,
   type Patient,
   type ApiPatientLike,
@@ -18,7 +19,7 @@ interface ApiPatientRow {
   nome?: { nome: string } | { nome: string }[] | null;
 }
 
-export type DataSource = 'api' | 'demo';
+export type DataSource = 'api' | 'demo' | 'empty';
 
 export interface PatientsResult {
   patients: Patient[];
@@ -34,27 +35,40 @@ function toApiLike(row: ApiPatientRow): ApiPatientLike {
   return { id: row.id, name: nomeDe(row), objetivo: row.objetivo };
 }
 
-/** Lista de pacientes para o painel: API real quando disponível, senão demo. */
+/** Estado vazio honesto (ou demo, se NEXT_PUBLIC_DEMO=1). */
+function emptyOrDemo(): PatientsResult {
+  return DEMO
+    ? { patients: DATA.patients, source: 'demo' }
+    : { patients: [], source: 'empty' };
+}
+
+/** Lista de pacientes para o painel: API real quando disponível, senão vazio/demo. */
 export async function loadClinicPatients(): Promise<PatientsResult> {
   try {
     const rows = await apiFetch<ApiPatientRow[]>('/patients');
-    if (Array.isArray(rows) && rows.length > 0) {
-      return { patients: rows.map((r) => synthPatient(toApiLike(r))), source: 'api' };
+    if (Array.isArray(rows)) {
+      if (rows.length > 0) {
+        return { patients: rows.map((r) => apiPatient(toApiLike(r))), source: 'api' };
+      }
+      // API respondeu, mas a clínica ainda não tem pacientes → estado vazio.
+      return emptyOrDemo();
     }
   } catch {
-    /* sem sessão / API indisponível / DB vazio → demo */
+    /* sem sessão / API indisponível */
   }
-  return { patients: DATA.patients, source: 'demo' };
+  return emptyOrDemo();
 }
 
-/** Um paciente pelo id: demo (p1..p15) ou busca na API e sintetiza o view-model. */
+/** Um paciente pelo id: API real (view-model honesto) ou demo (p1..p15). */
 export async function loadPatient(id: string): Promise<Patient | null> {
-  const demo = byId(id);
-  if (demo) return demo;
+  if (DEMO) {
+    const demo = byId(id);
+    if (demo) return demo;
+  }
   try {
     const row = await apiFetch<ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null }>(`/patients/${id}`);
     if (row && row.id) {
-      return synthPatient({
+      return apiPatient({
         id: row.id,
         name: nomeDe(row),
         objetivo: row.objetivo,
@@ -151,6 +165,8 @@ export function applyRealWearables(
   return {
     ...p,
     s,
+    hasData: true,
+    lastSync: last.data,
     steps: steps.length ? Math.round(avgLast(steps, 7)) : p.steps,
     calories: calories.length
       ? Math.round(avgLast(calories, 7) * 7)

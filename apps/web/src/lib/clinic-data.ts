@@ -70,7 +70,18 @@ export interface Patient {
   goalActiveMin: number;
   tags: string[];
   s: PatientSeries;
+  /** true somente quando há dados REAIS de wearable sobrepostos. */
+  hasData: boolean;
+  /** Data ISO (YYYY-MM-DD) da última sincronização real; null se nunca. */
+  lastSync: string | null;
 }
+
+/**
+ * Modo demonstração. Quando ligado (NEXT_PUBLIC_DEMO=1), o painel usa o
+ * dataset fictício e métricas sintéticas — útil para apresentações comerciais.
+ * DESLIGADO por padrão: o cliente real vê apenas dados reais + estados vazios.
+ */
+export const DEMO = process.env.NEXT_PUBLIC_DEMO === '1';
 
 export interface AlertItem {
   id: string;
@@ -255,6 +266,8 @@ export const patients: Patient[] = P.map((p, i) => {
         value: +(d.value / 10).toFixed(1),
       })),
     },
+    hasData: true,
+    lastSync: new Date(Date.now() - syncH * 3_600_000).toISOString().slice(0, 10),
   };
 });
 
@@ -342,10 +355,12 @@ export const DATA = {
   adherenceDist,
 };
 
-// ----- Síntese de view-models a partir de pacientes reais da API -----------
-// Enquanto o backend não expõe leitura de wearable_daily/aderência, geramos
-// métricas determinísticas (por id) para preencher o design. São rotuladas na
-// UI como demonstrativas até a sincronização real via Terra.
+// ----- View-models de paciente ---------------------------------------------
+// `apiPatient` cria um view-model HONESTO a partir do registro real: só a
+// identidade é preenchida; métricas ficam vazias (hasData=false) até existir
+// sincronização real de wearable, quando `applyRealWearables` as sobrepõe.
+// `demoPatient` mantém a fabricação determinística APENAS para o modo demo
+// (NEXT_PUBLIC_DEMO=1), usado em apresentações comerciais.
 
 function hashStr(s: string): number {
   let h = 2166136261;
@@ -374,7 +389,49 @@ export interface ApiPatientLike {
 
 const DEVICE_KEYS = Object.keys(DEVICES) as DeviceKey[];
 
-export function synthPatient(input: ApiPatientLike): Patient {
+/**
+ * View-model honesto de um paciente real: identidade preenchida, métricas
+ * zeradas e séries vazias. `hasData=false` sinaliza à UI para mostrar estados
+ * vazios em vez de números. As séries reais entram via `applyRealWearables`.
+ */
+export function apiPatient(input: ApiPatientLike): Patient {
+  const seed = hashStr(input.id) || 1;
+  const sex: 'f' | 'm' = input.sexo === 'M' ? 'm' : input.sexo === 'F' ? 'f' : 'f';
+  const empty: SeriesPoint[] = [];
+  return {
+    id: input.id,
+    name: input.name,
+    initials: initialsOf(input.name),
+    sex,
+    age: input.age ?? 0,
+    device: DEVICE_KEYS[seed % DEVICE_KEYS.length] as DeviceKey,
+    color: AVCOL[seed % AVCOL.length] as string,
+    syncHours: Number.MAX_SAFE_INTEGER,
+    adherence: 0,
+    perf: 'mid',
+    priority: 'm',
+    alertCount: 0,
+    steps: 0,
+    calories: 0,
+    workouts: 0,
+    sleep: 0,
+    restingHr: 0,
+    hrv: 0,
+    weight: 0,
+    heightCm: input.alturaCm ?? 0,
+    goalSteps: 10000,
+    goalCal: 4500,
+    goalWorkouts: 5,
+    goalSleep: 7.5,
+    goalActiveMin: 30,
+    tags: [],
+    s: { steps: empty, calories: empty, sleep: empty, hr: empty, hrv: empty, weight: empty },
+    hasData: false,
+    lastSync: null,
+  };
+}
+
+export function demoPatient(input: ApiPatientLike): Patient {
   const seed = hashStr(input.id) || 1;
   const rnd = mulberry(seed);
   const device = DEVICE_KEYS[seed % DEVICE_KEYS.length] as DeviceKey;
@@ -435,5 +492,7 @@ export function synthPatient(input: ApiPatientLike): Patient {
       hrv: series(seed + 5, 14, hrv, 8, adherence > 70 ? 0.1 : -0.08),
       weight: series(seed + 6, 30, weight * 10, 6, adherence > 70 ? -0.03 : 0.01).map((d) => ({ ...d, value: +(d.value / 10).toFixed(1) })),
     },
+    hasData: true,
+    lastSync: new Date(Date.now() - syncH * 3_600_000).toISOString().slice(0, 10),
   };
 }

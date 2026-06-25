@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from './icons';
 import { useTheme } from './theme-provider';
-import { DATA } from '@/lib/clinic-data';
 import { loadAlerts } from '@/lib/alerts-source';
 import { getSupabase } from '@/lib/supabase';
 
@@ -142,9 +141,7 @@ export function ClinicShell({ children }: { children: ReactNode }) {
   const [sbOpen, setSbOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
-  const [critCount, setCritCount] = useState(
-    DATA.alerts.filter((a) => a.level === 'crit' && a.status === 'open').length,
-  );
+  const [critCount, setCritCount] = useState(0);
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
