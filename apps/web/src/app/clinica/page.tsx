@@ -4,8 +4,8 @@ import { useState, useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { LineChart, BarChart, Donut, Ring } from '@/components/charts';
-import { MetricCard, Avatar, adhColor, syncLabel, LoadingSkeleton } from '@/components/ui';
-import { DATA, fmt, type Patient } from '@/lib/clinic-data';
+import { MetricCard, Avatar, adhColor, syncLabel, LoadingSkeleton, EmptyState } from '@/components/ui';
+import { fmt, type Patient } from '@/lib/clinic-data';
 import { loadClinicPatients } from '@/lib/patient-source';
 import { loadAlerts } from '@/lib/alerts-source';
 
@@ -19,18 +19,18 @@ interface ClinicStats {
 }
 
 function KpiStrip({ c, goPatients, goAlerts }: { c: ClinicStats; goPatients: (f?: string) => void; goAlerts: () => void }) {
-  const kpis = [
-    { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', trend: 4, sub: '3 novos esta semana' },
-    { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', trend: 6, sub: 'sincronizando < 48h' },
-    { icon: 'wifiOff', label: 'Sem sincronização', value: c.noSync, accent: 'var(--warn)', trend: 12, trendInvert: true, sub: 'precisam reconectar', go: () => goPatients('sem-sync') },
-    { icon: 'trend', label: 'Baixa aderência', value: c.lowAdherence, accent: 'var(--crit)', trend: -8, trendInvert: true, sub: '< 50% de meta', go: () => goPatients('baixa-aderencia') },
-    { icon: 'warn', label: 'Alertas críticos', value: c.critAlerts, accent: 'var(--crit)', trend: -2, trendInvert: true, sub: 'requerem ação', go: goAlerts },
-    { icon: 'sparkle', label: 'Evolução semanal', value: '+' + c.weeklyEvolution + '%', accent: 'var(--good)', trend: c.weeklyEvolution, sub: 'aderência média da clínica' },
+  const kpis: { icon: string; label: string; value: ReactNode; accent: string; sub?: string; go?: () => void }[] = [
+    { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', sub: 'cadastrados na clínica' },
+    { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', sub: 'sincronizando < 48h' },
+    { icon: 'wifiOff', label: 'Sem sincronização', value: c.noSync, accent: 'var(--warn)', sub: 'com wearable parado', go: () => goPatients('sem-sync') },
+    { icon: 'trend', label: 'Baixa aderência', value: c.lowAdherence, accent: 'var(--crit)', sub: '< 50% da meta', go: () => goPatients('baixa-aderencia') },
+    { icon: 'warn', label: 'Alertas críticos', value: c.critAlerts, accent: 'var(--crit)', sub: 'requerem ação', go: goAlerts },
+    { icon: 'sparkle', label: 'Aderência média', value: c.weeklyEvolution ? c.weeklyEvolution + '%' : '—', accent: 'var(--good)', sub: 'pacientes com dados' },
   ];
   return (
     <div className="metrics-grid stagger">
       {kpis.map((k, i) => (
-        <MetricCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} trend={k.trend} trendInvert={k.trendInvert} sub={k.sub} onClick={k.go} />
+        <MetricCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} sub={k.sub} onClick={k.go} />
       ))}
     </div>
   );
@@ -79,7 +79,7 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
             <div className="row gap12" style={{ minWidth: 0 }}>
               <div style={{ position: 'relative' }}>
                 <Avatar p={p} size={38} />
-                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: 50, background: adhColor(p.adherence), border: '2px solid var(--surface)' }} />
+                <div style={{ position: 'absolute', bottom: -2, right: -2, width: 16, height: 16, borderRadius: 50, background: p.adherence > 0 ? adhColor(p.adherence) : 'var(--border-strong)', border: '2px solid var(--surface)' }} />
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontWeight: 700, fontSize: 13.5 }}>{p.name}</div>
@@ -105,8 +105,8 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
                   {p.alertCount}
                 </span>
               )}
-              <Ring value={p.adherence} size={38} stroke={4.5} color={adhColor(p.adherence)}>
-                <span className="tnum" style={{ fontSize: 12, fontWeight: 800 }}>{p.adherence}</span>
+              <Ring value={p.adherence > 0 ? p.adherence : 0} size={38} stroke={4.5} color={p.adherence > 0 ? adhColor(p.adherence) : 'var(--border-strong)'}>
+                <span className="tnum" style={{ fontSize: 12, fontWeight: 800 }}>{p.adherence > 0 ? p.adherence : '—'}</span>
               </Ring>
               <Icon n="chevR" size={16} style={{ color: 'var(--text-faint)' }} />
             </div>
@@ -118,12 +118,13 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
 }
 
 function aggregate(patients: Patient[], key: 'steps' | 'calories' | 'sleep') {
-  if (patients.length === 0) return DATA.agg[key];
-  const ref = patients[0]!.s[key];
+  const withData = patients.filter((p) => p.s[key] && p.s[key].length > 0);
+  if (withData.length === 0) return [];
+  const ref = withData[0]!.s[key];
   const dec = key === 'sleep';
   return ref.map((point, idx) => {
-    const sum = patients.reduce((a, p) => a + (p.s[key][idx]?.value ?? 0), 0);
-    const v = sum / patients.length;
+    const sum = withData.reduce((a, p) => a + (p.s[key][idx]?.value ?? 0), 0);
+    const v = sum / withData.length;
     return { date: point.date, day: point.day, value: dec ? Math.round(v * 10) / 10 : Math.round(v) };
   });
 }
@@ -143,8 +144,15 @@ export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [patients, setPatients] = useState<Patient[]>(DATA.patients);
-  const [stats, setStats] = useState<ClinicStats>(DATA.clinic);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [stats, setStats] = useState<ClinicStats>({
+    totalPatients: 0,
+    activePatients: 0,
+    noSync: 0,
+    lowAdherence: 0,
+    critAlerts: 0,
+    weeklyEvolution: 0,
+  });
 
   useEffect(() => {
     import('@/lib/api').then(({ apiFetch }) =>
@@ -165,14 +173,19 @@ export default function DashboardPage() {
       const critReais = alerts
         ? alerts.filter((a) => a.item.level === 'crit' && a.item.status === 'open').length
         : null;
+      const withData = ps.filter((p) => p.hasData);
+      const withAdh = ps.filter((p) => p.adherence > 0);
+      const avgAdh = withAdh.length
+        ? Math.round(withAdh.reduce((a, p) => a + p.adherence, 0) / withAdh.length)
+        : 0;
       setPatients(ps);
       setStats({
         totalPatients: ps.length,
-        activePatients: ps.filter((p) => p.syncHours <= 48).length,
-        noSync: ps.filter((p) => p.syncHours > 48).length,
-        lowAdherence: ps.filter((p) => p.adherence < 50).length,
-        critAlerts: critReais ?? DATA.clinic.critAlerts,
-        weeklyEvolution: DATA.clinic.weeklyEvolution,
+        activePatients: withData.filter((p) => p.syncHours <= 48).length,
+        noSync: withData.filter((p) => p.syncHours > 48).length,
+        lowAdherence: withAdh.filter((p) => p.adherence < 50).length,
+        critAlerts: critReais ?? 0,
+        weeklyEvolution: avgAdh,
       });
       setLoading(false);
     }).catch(() => setLoading(false));
@@ -186,37 +199,48 @@ export default function DashboardPage() {
     }),
     [patients],
   );
+  const dataPatients = useMemo(() => patients.filter((p) => p.hasData), [patients]);
+  const adhPatients = useMemo(() => patients.filter((p) => p.adherence > 0), [patients]);
+  const hasAny = dataPatients.length > 0;
   const dist = useMemo(
     () => [
-      { label: 'Alta · 80–100', value: patients.filter((p) => p.adherence >= 80).length, color: 'var(--good)' },
-      { label: 'Média · 50–79', value: patients.filter((p) => p.adherence >= 50 && p.adherence < 80).length, color: 'var(--warn)' },
-      { label: 'Baixa · 0–49', value: patients.filter((p) => p.adherence < 50).length, color: 'var(--crit)' },
+      { label: 'Alta · 80–100', value: adhPatients.filter((p) => p.adherence >= 80).length, color: 'var(--good)' },
+      { label: 'Média · 50–79', value: adhPatients.filter((p) => p.adherence >= 50 && p.adherence < 80).length, color: 'var(--warn)' },
+      { label: 'Baixa · 0–49', value: adhPatients.filter((p) => p.adherence < 50).length, color: 'var(--crit)' },
     ],
-    [patients],
+    [adhPatients],
   );
-  const avgAdh = patients.length ? Math.round(patients.reduce((a, p) => a + p.adherence, 0) / patients.length) : 67;
-  const avgSleep = patients.length ? (patients.reduce((a, p) => a + p.sleep, 0) / patients.length).toFixed(1) : '7.0';
+  const avgAdh = adhPatients.length ? Math.round(adhPatients.reduce((a, p) => a + p.adherence, 0) / adhPatients.length) : null;
+  const avgSleep = hasAny ? (dataPatients.reduce((a, p) => a + p.sleep, 0) / dataPatients.length).toFixed(1) : null;
 
   const goPatients = (f?: string) => router.push('/clinica/pacientes' + (f ? `?filter=${f}` : ''));
   const goPatient = (id: string) => router.push(`/clinica/pacientes/${id}`);
 
+  const noWearable = (
+    <EmptyState
+      icon="wifiOff"
+      title="Sem dados de wearable"
+      desc="Os gráficos aparecem quando os pacientes conectam o dispositivo e os dados sincronizam."
+    />
+  );
+
   const charts = (
     <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <ChartCard title="Atividade geral" sub="Passos médios/dia · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />8%</span>}>
-          <LineChart data={A.steps} color="var(--c-steps)" height={140} unit=" passos" />
+        <ChartCard title="Atividade geral" sub="Passos médios/dia · 14 dias">
+          {A.steps.length ? <LineChart data={A.steps} color="var(--c-steps)" height={140} unit=" passos" /> : noWearable}
         </ChartCard>
-        <ChartCard title="Calorias ativas" sub="Média da clínica · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />5%</span>}>
-          <BarChart data={A.calories} color="var(--c-cal)" height={140} unit=" kcal" />
+        <ChartCard title="Calorias ativas" sub="Média da clínica · 14 dias">
+          {A.calories.length ? <BarChart data={A.calories} color="var(--c-cal)" height={140} unit=" kcal" /> : noWearable}
         </ChartCard>
       </div>
-      <ChartCard title="Distribuição de aderência" sub={stats.totalPatients + ' pacientes'}>
+      <ChartCard title="Distribuição de aderência" sub={adhPatients.length + ' com aderência'}>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: '6px 0' }}>
           <div style={{ position: 'relative' }}>
             <Donut segments={dist} size={150} stroke={20} />
             <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', textAlign: 'center' }}>
               <div>
-                <div className="tnum" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>{avgAdh}</div>
+                <div className="tnum" style={{ fontSize: 30, fontWeight: 800, letterSpacing: '-0.02em' }}>{avgAdh ?? '—'}</div>
                 <div style={{ fontSize: 10.5, color: 'var(--text-faint)', fontWeight: 700 }}>média geral</div>
               </div>
             </div>
@@ -241,15 +265,17 @@ export default function DashboardPage() {
     <ChartCard
       title="Sono médio da clínica"
       sub="Horas por noite · 14 dias"
-      right={<span className="badge neutral">{avgSleep}h média</span>}
+      right={<span className="badge neutral">{avgSleep ? avgSleep + 'h média' : 'sem dados'}</span>}
       legend={
-        <div className="row gap16" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-faint)' }}>
-          <span className="row gap6"><span style={{ width: 14, height: 2, background: 'var(--c-sleep)', borderRadius: 2 }} />Realizado</span>
-          <span className="row gap6"><span style={{ width: 14, height: 0, borderTop: '2px dashed var(--text-faint)' }} />Meta 7.5h</span>
-        </div>
+        A.sleep.length ? (
+          <div className="row gap16" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-faint)' }}>
+            <span className="row gap6"><span style={{ width: 14, height: 2, background: 'var(--c-sleep)', borderRadius: 2 }} />Realizado</span>
+            <span className="row gap6"><span style={{ width: 14, height: 0, borderTop: '2px dashed var(--text-faint)' }} />Meta 7.5h</span>
+          </div>
+        ) : undefined
       }
     >
-      <LineChart data={A.sleep} color="var(--c-sleep)" height={130} goal={7.5} fmtV={(v) => v + 'h'} yPad={0.25} />
+      {A.sleep.length ? <LineChart data={A.sleep} color="var(--c-sleep)" height={130} goal={7.5} fmtV={(v) => v + 'h'} yPad={0.25} /> : noWearable}
     </ChartCard>
   );
 
@@ -277,12 +303,36 @@ export default function DashboardPage() {
           <LoadingSkeleton variant="metric" count={6} />
           <LoadingSkeleton variant="row" count={4} />
         </div>
+      ) : patients.length === 0 ? (
+        <div className="card fade-in">
+          <EmptyState
+            icon="users"
+            title="Nenhum paciente ainda"
+            desc="Cadastre os primeiros pacientes para acompanhar a evolução da clínica no painel."
+            action={
+              <button className="btn primary" style={{ marginTop: 12 }} onClick={() => router.push('/clinica/pacientes')}>
+                <Icon n="plus" size={16} />
+                Ir para pacientes
+              </button>
+            }
+          />
+        </div>
       ) : (
         <div className="grid fade-in">
           <KpiStrip c={stats} goPatients={goPatients} goAlerts={() => router.push('/clinica/alertas')} />
           {charts}
           <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
-            <PriorityList patients={patients} goPatients={() => router.push('/clinica/pacientes')} goPatient={goPatient} />
+            {hasAny ? (
+              <PriorityList patients={dataPatients} goPatients={() => router.push('/clinica/pacientes')} goPatient={goPatient} />
+            ) : (
+              <div className="card">
+                <EmptyState
+                  icon="pulse"
+                  title="Sem dados de pacientes"
+                  desc="A lista de prioridades aparece quando há dados de wearable sincronizados."
+                />
+              </div>
+            )}
             {sleepCard}
           </div>
         </div>

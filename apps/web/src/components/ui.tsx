@@ -132,12 +132,19 @@ export function AdherenceScore({ value, size = 92, showLabel = true, stroke = 9 
 // ---- PatientCard ---------------------------------------------------------
 export function PatientCard({ p, onOpen }: { p: Patient; onOpen: (p: Patient) => void }) {
   const stale = p.syncHours > 48;
-  const metrics: [string, ReactNode, string][] = [
-    ['foot', fmt(p.steps), 'passos'],
-    ['flame', fmt(p.calories), 'kcal'],
-    ['dumbbell', p.workouts, 'treinos'],
-    ['moon', p.sleep + 'h', 'sono'],
-  ];
+  const metrics: [string, ReactNode, string][] = p.hasData
+    ? [
+        ['foot', fmt(p.steps), 'passos'],
+        ['flame', fmt(p.calories), 'kcal'],
+        ['dumbbell', p.workouts, 'treinos'],
+        ['moon', p.sleep + 'h', 'sono'],
+      ]
+    : [
+        ['foot', '—', 'passos'],
+        ['flame', '—', 'kcal'],
+        ['dumbbell', '—', 'treinos'],
+        ['moon', '—', 'sono'],
+      ];
   return (
     <div
       className="card"
@@ -165,9 +172,9 @@ export function PatientCard({ p, onOpen }: { p: Patient; onOpen: (p: Patient) =>
             </div>
           </div>
         </div>
-        <Ring value={p.adherence} size={46} stroke={5} color={adhColor(p.adherence)}>
+        <Ring value={p.adherence > 0 ? p.adherence : 0} size={46} stroke={5} color={p.adherence > 0 ? adhColor(p.adherence) : 'var(--border-strong)'}>
           <span className="tnum" style={{ fontSize: 14, fontWeight: 800 }}>
-            {p.adherence}
+            {p.adherence > 0 ? p.adherence : '—'}
           </span>
         </Ring>
       </div>
@@ -182,7 +189,12 @@ export function PatientCard({ p, onOpen }: { p: Patient; onOpen: (p: Patient) =>
         ))}
       </div>
       <div className="between">
-        {stale ? (
+        {!p.hasData ? (
+          <span className="badge neutral">
+            <Icon n="wifiOff" size={12} />
+            Aguardando sincronização
+          </span>
+        ) : stale ? (
           <span className="badge crit">
             <Icon n="wifiOff" size={12} />
             {'Sem sync ' + syncLabel(p.syncHours)}

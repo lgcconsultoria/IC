@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { Ring } from '@/components/charts';
 import { Avatar, adhColor } from '@/components/ui';
-import { type Patient } from '@/lib/clinic-data';
+import { DEMO, type Patient } from '@/lib/clinic-data';
 import { loadPatient, loadGoals, saveGoals, type GoalsInput } from '@/lib/patient-source';
 
 type GoalApiKey = keyof GoalsInput;
@@ -31,12 +31,16 @@ const DEFS: GoalDef[] = [
   { key: 'workouts', api: 'metaTreinos', icon: 'dumbbell', label: 'Treinos / semana', unit: '', min: 0, max: 7, step: 1, color: 'var(--accent)', cur: (p) => p.workouts, base: (p) => p.goalWorkouts },
   { key: 'active', api: 'metaMinAtivos', icon: 'clock', label: 'Minutos ativos / dia', unit: 'min', min: 10, max: 90, step: 5, color: 'var(--info)', cur: (p) => Math.round(p.steps / 350), base: (p) => p.goalActiveMin },
   { key: 'sleep', api: 'metaSonoH', icon: 'moon', label: 'Sono / noite', unit: 'h', min: 5, max: 10, step: 0.5, color: 'var(--c-sleep)', cur: (p) => p.sleep, base: (p) => p.goalSleep },
-  { key: 'weight', api: 'metaPesoKg', icon: 'scale', label: 'Peso alvo', unit: 'kg', min: 50, max: 110, step: 0.5, color: 'var(--c-weight)', cur: (p) => p.weight, base: (p) => p.weight - 4, invert: true },
+  { key: 'weight', api: 'metaPesoKg', icon: 'scale', label: 'Peso alvo', unit: 'kg', min: 50, max: 110, step: 0.5, color: 'var(--c-weight)', cur: (p) => p.weight, base: (p) => p.weight || 70, invert: true },
 ];
 
 function GoalEditor({ def, p, val, onChange }: { def: GoalDef; p: Patient; val: number; onChange: (v: number) => void }) {
   const cur = def.cur(p);
-  const pct = def.invert ? Math.min(100, Math.round(cur <= val ? 100 : (val / cur) * 100)) : Math.min(100, Math.round((cur / val) * 100));
+  const pct = !p.hasData
+    ? null
+    : def.invert
+    ? Math.min(100, Math.round(cur <= val ? 100 : (val / cur) * 100))
+    : Math.min(100, Math.round((cur / val) * 100));
   return (
     <div className="card card-pad">
       <div className="between" style={{ marginBottom: 14 }}>
@@ -46,7 +50,7 @@ function GoalEditor({ def, p, val, onChange }: { def: GoalDef; p: Patient; val: 
           </div>
           <div>
             <div style={{ fontWeight: 700, fontSize: 13.5 }}>{def.label}</div>
-            <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{'Atual: ' + cur.toLocaleString('pt-BR') + ' ' + def.unit}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>{p.hasData ? 'Atual: ' + cur.toLocaleString('pt-BR') + ' ' + def.unit : 'Atual: sem dados'}</div>
           </div>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -55,13 +59,17 @@ function GoalEditor({ def, p, val, onChange }: { def: GoalDef; p: Patient; val: 
         </div>
       </div>
       <input type="range" min={def.min} max={def.max} step={def.step} value={val} onChange={(e) => onChange(+e.target.value)} style={{ width: '100%', accentColor: def.color, height: 6 }} />
-      <div className="between" style={{ marginTop: 10 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Progresso</span>
-        <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: pct >= 100 ? 'var(--good)' : 'var(--text-muted)' }}>{pct + '%'}</span>
-      </div>
-      <div className="progress-track" style={{ height: 7, marginTop: 5 }}>
-        <div className="progress-fill" style={{ width: pct + '%', background: pct >= 100 ? 'var(--good)' : def.color }} />
-      </div>
+      {pct != null && (
+        <>
+          <div className="between" style={{ marginTop: 10 }}>
+            <span style={{ fontSize: 11, color: 'var(--text-faint)' }}>Progresso</span>
+            <span className="tnum" style={{ fontSize: 12, fontWeight: 700, color: pct >= 100 ? 'var(--good)' : 'var(--text-muted)' }}>{pct + '%'}</span>
+          </div>
+          <div className="progress-track" style={{ height: 7, marginTop: 5 }}>
+            <div className="progress-fill" style={{ width: pct + '%', background: pct >= 100 ? 'var(--good)' : def.color }} />
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -196,40 +204,51 @@ export default function GoalsPage() {
         </div>
         <div className="grid">
           <div className="card card-pad" style={{ textAlign: 'center' }}>
-            <div className="eyebrow" style={{ marginBottom: 14 }}>Score de aderência projetado</div>
-            <Ring value={p.adherence} size={120} stroke={12} color={adhColor(p.adherence)}>
-              <div>
-                <div className="tnum" style={{ fontSize: 32, fontWeight: 800 }}>{p.adherence}</div>
-                <div style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 700 }}>/ 100</div>
-              </div>
-            </Ring>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 14, lineHeight: 1.5 }}>Metas equilibradas aumentam a chance de adesão. Evite saltos maiores que 20% por ciclo.</p>
-          </div>
-          <div className="card card-pad">
-            <div className="between" style={{ marginBottom: 14 }}>
-              <div className="section-title" style={{ fontSize: 14.5 }}>Histórico de metas</div>
-              <span className="badge neutral">exemplo</span>
-            </div>
-            {lastUpdate && (
-              <div style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 12 }}>
-                Última atualização real: <b>{lastUpdate}</b>
+            {p.hasData && p.adherence > 0 ? (
+              <>
+                <div className="eyebrow" style={{ marginBottom: 14 }}>Score de aderência</div>
+                <Ring value={p.adherence} size={120} stroke={12} color={adhColor(p.adherence)}>
+                  <div>
+                    <div className="tnum" style={{ fontSize: 32, fontWeight: 800 }}>{p.adherence}</div>
+                    <div style={{ fontSize: 10, color: 'var(--text-faint)', fontWeight: 700 }}>/ 100</div>
+                  </div>
+                </Ring>
+              </>
+            ) : (
+              <div style={{ width: 56, height: 56, borderRadius: 16, margin: '0 auto 4px', background: 'color-mix(in oklch, var(--accent) 14%, transparent)', color: 'var(--accent)', display: 'grid', placeItems: 'center' }}>
+                <Icon n="target" size={26} />
               </div>
             )}
-            <div style={{ display: 'grid', gap: 14 }}>
-              {HISTORY.map((h, i) => (
-                <div key={i} className="row gap10" style={{ alignItems: 'flex-start' }}>
-                  <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--surface-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                    <Icon n={h.icon} size={15} />
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 12.5 }}>{h.change}</div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{h.note}</div>
-                    <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>{h.date + ' · ' + h.by}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 14, lineHeight: 1.5 }}>Metas equilibradas aumentam a chance de adesão. Evite saltos maiores que 20% por ciclo.</p>
           </div>
+          {!DEMO && lastUpdate && (
+            <div className="card card-pad">
+              <div className="section-title" style={{ fontSize: 14.5, marginBottom: 8 }}>Última atualização</div>
+              <div style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>Metas atualizadas em <b>{lastUpdate}</b>.</div>
+            </div>
+          )}
+          {DEMO && (
+            <div className="card card-pad">
+              <div className="between" style={{ marginBottom: 14 }}>
+                <div className="section-title" style={{ fontSize: 14.5 }}>Histórico de metas</div>
+                <span className="badge neutral">exemplo</span>
+              </div>
+              <div style={{ display: 'grid', gap: 14 }}>
+                {HISTORY.map((h, i) => (
+                  <div key={i} className="row gap10" style={{ alignItems: 'flex-start' }}>
+                    <div style={{ width: 30, height: 30, borderRadius: 9, background: 'var(--surface-2)', color: 'var(--text-muted)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                      <Icon n={h.icon} size={15} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 12.5 }}>{h.change}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>{h.note}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-faint)', marginTop: 2 }}>{h.date + ' · ' + h.by}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
