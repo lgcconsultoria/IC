@@ -17,7 +17,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from garminconnect import Garmin
@@ -130,10 +130,20 @@ def _activities(api: Garmin, start: str, end: str) -> list[dict[str, Any]]:
         inicio = a.get("startTimeLocal") or a.get("startTimeGMT")
         if not inicio:
             continue
+        inicio_iso = str(inicio).replace(" ", "T")
+        # Calcula o fim a partir da duração quando disponível (Garmin fornece
+        # duration em segundos; confirmado com dados reais do Garmin Venu 3).
+        fim_iso = None
+        dur = a.get("duration")
+        if dur:
+            try:
+                fim_iso = (datetime.fromisoformat(inicio_iso) + timedelta(seconds=float(dur))).isoformat()
+            except (ValueError, TypeError):
+                fim_iso = None
         out.append(
             {
-                "inicio": str(inicio).replace(" ", "T"),
-                "fim": None,
+                "inicio": inicio_iso,
+                "fim": fim_iso,
                 "tipo": (a.get("activityType") or {}).get("typeKey") or "atividade",
                 "kcal": round(a["calories"]) if a.get("calories") is not None else None,
                 "fc_media": int(a["averageHR"]) if a.get("averageHR") is not None else None,
