@@ -96,7 +96,7 @@ function Sidebar({ critCount, open, onClose, userName, userRole, onLogout }: {
             <div className="between" style={{ color: 'var(--accent-ink)', marginBottom: 5 }}>
               <span className="row gap6" style={{ fontWeight: 700, fontSize: 12 }}>
                 <Icon n="sparkle" size={14} />
-                ROOK API
+                Garmin
               </span>
               <span className="row gap6" style={{ fontSize: 10.5, fontWeight: 700 }}>
                 <span style={{ width: 6, height: 6, borderRadius: 50, background: 'currentColor' }} />

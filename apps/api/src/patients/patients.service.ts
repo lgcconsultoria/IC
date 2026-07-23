@@ -161,7 +161,7 @@ export class PatientsService {
     return data;
   }
 
-  /** Série diária de wearables (ROOK) dos últimos `days` dias. */
+  /** Série diária de wearables (Garmin) dos últimos `days` dias. */
   async listWearableDaily(user: AppUser, patientId: string, days = 30) {
     await this.findOne(user, patientId); // valida acesso
     const since = new Date();
@@ -178,7 +178,7 @@ export class PatientsService {
     return data;
   }
 
-  /** Atividades/treinos individuais (ROOK) dos últimos `days` dias. */
+  /** Atividades/treinos individuais (Garmin) dos últimos `days` dias. */
   async listWearableActivities(user: AppUser, patientId: string, days = 30) {
     await this.findOne(user, patientId); // valida acesso
     const since = new Date();

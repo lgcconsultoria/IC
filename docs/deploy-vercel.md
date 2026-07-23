@@ -76,9 +76,36 @@ Antes de logar no ambiente publicado, aplique no **SQL Editor**:
 `0001_init.sql` → `0002_rls_policies.sql` → `0003_auth_provisioning.sql` → `seed.sql`,
 e crie a senha do admin no **Authentication** com o e-mail do seed.
 
-## Limitações (serverless)
+## Limitações (serverless) e produção com Garmin
 
-Filas (BullMQ/Redis), workers e webhooks de longa duração da Terra **não** rodam
-bem em serverless. Quando entrarmos nessas integrações (Fase 3), a API deve
-migrar para um host Node persistente (Railway/Render/Fly) — o código não muda,
-só o destino do deploy.
+Filas (BullMQ/Redis), o **poller do Garmin** e o **sidecar Python** **não** rodam
+em serverless. Para operar na clínica com a integração Garmin, a arquitetura de
+produção é:
+
+| Componente | Onde roda | Observação |
+|---|---|---|
+| `ic-web` (Next.js) | **Vercel** | Sem mudança. `NEXT_PUBLIC_API_URL` → URL da API no host persistente. |
+| `ic-api` (NestJS + poller) | **Host persistente** (Railway/Render/Fly) | Mesmo código; agora roda também o worker BullMQ. |
+| `garmin-connector` (Python) | **Host persistente** (container próprio) | Rede privada, **sem** exposição pública. |
+| Redis | Gerenciado (Railway/Render/Upstash) | `REDIS_URL`. |
+
+> Enquanto a API ficar na Vercel, o poller não inicia (sem `REDIS_URL`); a coleta
+> pode ser disparada sob demanda por `POST /api/garmin/sync`. O acompanhamento
+> contínuo exige o host persistente.
+
+### Variáveis de ambiente Garmin (host persistente)
+
+| Nome | Onde | Valor |
+|---|---|---|
+| `GARMIN_CONNECTOR_URL` | API | URL interna do sidecar (ex.: `http://garmin-connector:8000`) |
+| `GARMIN_CONNECTOR_SECRET` | API **e** sidecar | Mesmo segredo forte nos dois |
+| `GARMIN_TOKEN_KEY` | API | Base64 de 32 bytes — `openssl rand -base64 32` |
+| `GARMIN_STORE_PASSWORD` | API | `true` (re-login silencioso) |
+| `GARMIN_BACKFILL_DAYS` | API | `30` |
+| `GARMIN_POLL_INTERVAL_MS` / `GARMIN_POLL_ENABLED` | API | `21600000` / `true` |
+| `REDIS_URL` | API | URL do Redis gerenciado |
+
+### Migrations
+
+Aplicar no SQL Editor, em ordem: `0001` → `0002` → `0003` → `0004` → `0005` →
+`0006` → `0007_garmin_integration.sql`, e depois `seed.sql` (uma vez).

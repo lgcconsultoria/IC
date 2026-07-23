@@ -68,7 +68,7 @@ export async function loadPatient(id: string): Promise<Patient | null> {
   return null;
 }
 
-// ----- Wearables reais (ROOK) -------------------------------------------------
+// ----- Wearables reais (Garmin) -----------------------------------------------
 
 export interface WearableDailyRow {
   data: string;

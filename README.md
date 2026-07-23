@@ -2,7 +2,7 @@
 
 Sistema de gestão clínica e acompanhamento de emagrecimento saudável:
 prontuário e evolução de pacientes, portal do paciente, nutrição (com contagem
-de calorias por IA) e acompanhamento remoto via wearables (Terra API).
+de calorias por IA) e acompanhamento remoto via wearables (Garmin).
 
 > 📐 Arquitetura completa em [`docs/arquitetura.md`](docs/arquitetura.md).
 
@@ -12,7 +12,8 @@ de calorias por IA) e acompanhamento remoto via wearables (Terra API).
 - **Backend:** NestJS + TypeScript (`apps/api`)
 - **Banco/Auth/Storage:** Supabase (PostgreSQL) — `infra/supabase`
 - **Filas:** BullMQ + Redis
-- **Wearables:** Terra API (webhooks)
+- **Wearables:** Garmin — sidecar Python (`apps/connector-garmin`) reusando o núcleo
+  do [garmin_mcp](https://github.com/Taxuspt/garmin_mcp) (`garth` + `python-garminconnect`)
 - **IA de calorias:** modelo multimodal (Claude / GPT-4o)
 - **Monorepo:** pnpm + Turborepo
 
@@ -21,7 +22,8 @@ de calorias por IA) e acompanhamento remoto via wearables (Terra API).
 ```
 apps/
   web/                # Next.js (portal do paciente + painel da clínica)
-  api/                # NestJS (REST + webhooks)
+  api/                # NestJS (REST + poller Garmin)
+  connector-garmin/  # sidecar Python (FastAPI) — dados do Garmin Connect
 packages/
   types/              # tipos/contratos compartilhados (TS)
   config/             # configs base compartilhadas

@@ -293,7 +293,7 @@ function ReportsInner() {
                 <LineChart data={p.s.steps} color="var(--c-steps)" height={110} goal={10000} unit=" passos" />
               </div>
               <div style={{ marginTop: 18, paddingTop: 14, borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-faint)', lineHeight: 1.5 }}>
-                Gerado automaticamente a partir de dados de wearable via ROOK. Este resumo é um apoio à decisão clínica e não substitui a avaliação profissional.
+                Gerado automaticamente a partir de dados de wearable via Garmin. Este resumo é um apoio à decisão clínica e não substitui a avaliação profissional.
               </div>
             </div>
           )
