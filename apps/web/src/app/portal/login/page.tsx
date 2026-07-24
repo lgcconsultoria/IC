@@ -124,10 +124,9 @@ export default function PatientLoginPage() {
           <p style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--text-muted)', marginTop: 20 }}>
             Não tem conta? <a style={{ color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>Receba o convite da sua clínica</a>
           </p>
-          <button type="button" className="btn ghost sm" style={{ width: '100%', marginTop: 18 }} onClick={() => router.push('/clinica')}>
-            <Icon n="chevL" size={14} />
-            Voltar ao portal da clínica
-          </button>
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginTop: 14 }}>
+            É da equipe da clínica? <a href="/login" style={{ color: 'var(--accent)', fontWeight: 600 }}>Acesse o painel da clínica</a>
+          </p>
         </form>
       </div>
     </div>

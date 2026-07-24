@@ -40,6 +40,42 @@ export class PatientsController {
     return this.patients.findMine(user);
   }
 
+  @Get('ranking')
+  ranking(
+    @CurrentUser() user: AppUser,
+    @Query('days') days?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('publicos') publicos?: string,
+    @Query('generos') generos?: string,
+  ) {
+    const hoje = new Date();
+    const toDate = to ?? hoje.toISOString().slice(0, 10);
+    let fromDate = from;
+    if (!fromDate) {
+      const n = Number(days) || 90;
+      const d = new Date(hoje);
+      d.setDate(d.getDate() - n);
+      fromDate = d.toISOString().slice(0, 10);
+    }
+    const pub = (publicos ? publicos.split(',') : ['pacientes'])
+      .map((s) => s.trim())
+      .filter((s): s is 'pacientes' | 'funcionarios' =>
+        s === 'pacientes' || s === 'funcionarios',
+      );
+    const gen = (generos ? generos.split(',') : [])
+      .map((s) => s.trim())
+      .filter((s): s is 'F' | 'M' | 'outro' =>
+        s === 'F' || s === 'M' || s === 'outro',
+      );
+    return this.patients.getRanking(user, {
+      from: fromDate,
+      to: toDate,
+      publicos: pub.length ? pub : ['pacientes'],
+      generos: gen,
+    });
+  }
+
   @Get(':id')
   findOne(@CurrentUser() user: AppUser, @Param('id') id: string) {
     return this.patients.findOne(user, id);

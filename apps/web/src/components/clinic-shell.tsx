@@ -28,17 +28,16 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/clinica', label: 'Dashboard', icon: 'grid', match: (p) => p === '/clinica' },
       { href: '/clinica/pacientes', label: 'Pacientes', icon: 'users', match: (p) => p.startsWith('/clinica/pacientes') },
+      { href: '/clinica/ranking', label: 'Ranking', icon: 'activity', match: (p) => p.startsWith('/clinica/ranking') },
       { href: '/clinica/alertas', label: 'Alertas', icon: 'bell', badge: true, match: (p) => p.startsWith('/clinica/alertas') },
       { href: '/clinica/relatorios', label: 'Relatórios', icon: 'file', match: (p) => p.startsWith('/clinica/relatorios') },
       { href: '/clinica/equipe', label: 'Equipe', icon: 'users', match: (p) => p.startsWith('/clinica/equipe') },
     ],
   },
   {
-    sec: 'Portal do paciente',
+    sec: 'Minha área',
     items: [
-      { href: '/portal/conectar', label: 'Conectar wearable', icon: 'plug', match: (p) => p.startsWith('/portal/conectar') },
-      { href: '/portal/refeicao', label: 'Registrar refeição', icon: 'flame', match: (p) => p.startsWith('/portal/refeicao') },
-      { href: '/portal/login', label: 'Login do paciente', icon: 'user', match: (p) => p.startsWith('/portal/login') },
+      { href: '/clinica/minha-evolucao', label: 'Minha evolução', icon: 'pulse', match: (p) => p.startsWith('/clinica/minha-evolucao') },
     ],
   },
 ];
@@ -51,6 +50,8 @@ function titleFor(path: string): string {
   if (path.startsWith('/clinica/alertas')) return 'Central de alertas';
   if (path.startsWith('/clinica/relatorios')) return 'Relatórios';
   if (path.startsWith('/clinica/equipe')) return 'Equipe';
+  if (path.startsWith('/clinica/ranking')) return 'Ranking de resultados';
+  if (path.startsWith('/clinica/minha-evolucao')) return 'Minha evolução';
   if (path.startsWith('/clinica/perfil')) return 'Meu perfil';
   return 'IC Clínica';
 }
@@ -209,10 +210,6 @@ export function ClinicShell({ children }: { children: ReactNode }) {
             {critCount > 0 && <span className="dot" />}
           </button>
           <div className="vdivider" style={{ height: 24, margin: '0 4px' }} />
-          <button className="btn ghost sm" onClick={() => router.push('/portal/login')}>
-            <Icon n="user" size={15} />
-            <span className="hide-sm">Portal do paciente</span>
-          </button>
           <button className="icon-btn" title="Sair" onClick={handleLogout}>
             <Icon n="logout" size={18} />
           </button>

@@ -42,6 +42,7 @@ export class PatientsService {
       .from('patients')
       .select('id, nome:users(nome), user_id, objetivo, ativo, created_at')
       .eq('clinic_id', user.clinicId)
+      .eq('eh_funcionario', false) // não lista os registros de autoacompanhamento da equipe
       .order('created_at', { ascending: false });
     if (error) throw new InternalServerErrorException(error.message);
     return data;
@@ -112,15 +113,50 @@ export class PatientsService {
     return patient;
   }
 
-  /** Paciente vinculado ao usuário logado (portal do paciente). */
+  /**
+   * Registro de paciente do usuário logado.
+   *   - paciente comum: o registro criado pela clínica;
+   *   - funcionário da equipe: registro de AUTOACOMPANHAMENTO, criado sob
+   *     demanda (eh_funcionario=true) para ele conectar o próprio relógio.
+   */
   async findMine(user: AppUser) {
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) throw new InternalServerErrorException(error.message);
-    if (!data) throw new NotFoundException('Paciente não encontrado para este usuário');
+    if (data) return data;
+
+    // Equipe sem registro ainda → provisiona o autoacompanhamento.
+    if (isStaff(user)) return this.ensureSelfPatient(user);
+    throw new NotFoundException('Paciente não encontrado para este usuário');
+  }
+
+  /** Cria (idempotente) o registro de autoacompanhamento de um funcionário. */
+  async ensureSelfPatient(user: AppUser) {
+    const { data: existing } = await this.db
+      .from('patients')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existing) return existing;
+
+    const { data, error } = await this.db
+      .from('patients')
+      .insert({
+        clinic_id: user.clinicId,
+        user_id: user.id,
+        eh_funcionario: true,
+        objetivo: 'Autoacompanhamento',
+      })
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
+      .single();
+    if (error || !data) {
+      throw new InternalServerErrorException(
+        error?.message ?? 'Falha ao criar autoacompanhamento',
+      );
+    }
     return data;
   }
 
@@ -397,6 +433,128 @@ export class PatientsService {
     const m = hoje.getMonth() - nasc.getMonth();
     if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
     return idade;
+  }
+
+  // ----- Ranking de resultados (clínica) -----
+
+  /**
+   * Ranking de evolução dos pacientes (e, opcionalmente, funcionários) da
+   * clínica num período. Pontua perda de peso + ganho de massa magra +
+   * aumento da pontuação da bioimpedância (InBody).
+   */
+  async getRanking(
+    user: AppUser,
+    opts: {
+      from: string;
+      to: string;
+      publicos: Array<'pacientes' | 'funcionarios'>;
+      generos: Array<'F' | 'M' | 'outro'>;
+    },
+  ) {
+    this.assertStaff(user);
+
+    // pesos do score (documentados na resposta para transparência)
+    const PESO = { perdaPeso: 10, ganhoMassaMagra: 15, pontuacaoInbody: 1 };
+
+    let q = this.db
+      .from('patients')
+      .select('id, sexo, eh_funcionario, nome:users(nome)')
+      .eq('clinic_id', user.clinicId)
+      .eq('ativo', true);
+
+    const incluiPac = opts.publicos.includes('pacientes');
+    const incluiFunc = opts.publicos.includes('funcionarios');
+    if (incluiPac && !incluiFunc) q = q.eq('eh_funcionario', false);
+    else if (!incluiPac && incluiFunc) q = q.eq('eh_funcionario', true);
+    // ambos → sem filtro; nenhum → também sem filtro (default = todos)
+
+    if (opts.generos.length > 0 && opts.generos.length < 3) {
+      q = q.in('sexo', opts.generos);
+    }
+
+    const { data: pacientes, error } = await q;
+    if (error) throw new InternalServerErrorException(error.message);
+    const rows = (pacientes ?? []) as Array<{
+      id: string;
+      sexo: string | null;
+      eh_funcionario: boolean;
+      nome: { nome: string } | { nome: string }[] | null;
+    }>;
+    if (rows.length === 0) {
+      return { pesos: PESO, from: opts.from, to: opts.to, itens: [] };
+    }
+    const ids = rows.map((r) => r.id);
+
+    const [{ data: meds }, { data: bio }] = await Promise.all([
+      this.db
+        .from('measurements')
+        .select('patient_id, data, peso_kg')
+        .in('patient_id', ids)
+        .gte('data', opts.from)
+        .lte('data', opts.to)
+        .not('peso_kg', 'is', null)
+        .order('data', { ascending: true }),
+      this.db
+        .from('body_composition')
+        .select('patient_id, data_exame, massa_magra_kg, pontuacao')
+        .in('patient_id', ids)
+        .gte('data_exame', opts.from)
+        .lte('data_exame', opts.to)
+        .order('data_exame', { ascending: true }),
+    ]);
+
+    // primeiro/último valor por paciente
+    const firstLast = <T>(arr: T[], val: (t: T) => number | null) => {
+      const nums = arr.map(val).filter((v): v is number => v != null);
+      if (nums.length < 2) return null;
+      return { first: nums[0], last: nums[nums.length - 1] };
+    };
+    const byPatient = <T extends { patient_id: string }>(arr: T[] | null) => {
+      const m = new Map<string, T[]>();
+      for (const r of arr ?? []) {
+        const a = m.get(r.patient_id) ?? [];
+        a.push(r);
+        m.set(r.patient_id, a);
+      }
+      return m;
+    };
+    const medsBy = byPatient(meds);
+    const bioBy = byPatient(bio);
+
+    const itens = rows
+      .map((r) => {
+        const nomeObj = Array.isArray(r.nome) ? r.nome[0] : r.nome;
+        const mPeso = firstLast(medsBy.get(r.id) ?? [], (m) => Number(m.peso_kg));
+        const mMagra = firstLast(bioBy.get(r.id) ?? [], (b) => Number(b.massa_magra_kg));
+        const mPontos = firstLast(bioBy.get(r.id) ?? [], (b) => Number(b.pontuacao));
+
+        const perdaPeso = mPeso ? +(mPeso.first - mPeso.last).toFixed(1) : null; // >0 perdeu
+        const ganhoMassaMagra = mMagra ? +(mMagra.last - mMagra.first).toFixed(1) : null;
+        const deltaPontuacao = mPontos ? Math.round(mPontos.last - mPontos.first) : null;
+
+        const temDados =
+          perdaPeso != null || ganhoMassaMagra != null || deltaPontuacao != null;
+        const score =
+          (perdaPeso ?? 0) * PESO.perdaPeso +
+          (ganhoMassaMagra ?? 0) * PESO.ganhoMassaMagra +
+          (deltaPontuacao ?? 0) * PESO.pontuacaoInbody;
+
+        return {
+          patient_id: r.id,
+          nome: nomeObj?.nome ?? 'Paciente',
+          sexo: r.sexo,
+          eh_funcionario: r.eh_funcionario,
+          perda_peso_kg: perdaPeso,
+          ganho_massa_magra_kg: ganhoMassaMagra,
+          delta_pontuacao_inbody: deltaPontuacao,
+          score: temDados ? +score.toFixed(1) : null,
+          tem_dados: temDados,
+        };
+      })
+      .filter((i) => i.tem_dados)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    return { pesos: PESO, from: opts.from, to: opts.to, itens };
   }
 
   // ----- helpers -----

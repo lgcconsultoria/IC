@@ -8,7 +8,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../supabase/supabase.module';
-import type { AppUser } from '../auth/app-user';
+import { type AppUser, isStaff } from '../auth/app-user';
 import {
   GarminConnectorClient,
   GarminConnectorError,
@@ -45,12 +45,30 @@ export class GarminService {
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) throw new NotFoundException('Falha ao localizar paciente');
-    if (!data) {
-      throw new NotFoundException(
-        'Somente pacientes podem conectar o Garmin (usuário sem cadastro de paciente)',
-      );
+    if (data) return data.id as string;
+
+    // Funcionário da equipe conectando o próprio relógio → cria o registro de
+    // autoacompanhamento sob demanda (mesma máquina de dados dos pacientes).
+    if (isStaff(user)) {
+      const { data: created, error: insErr } = await this.db
+        .from('patients')
+        .insert({
+          clinic_id: user.clinicId,
+          user_id: user.id,
+          eh_funcionario: true,
+          objetivo: 'Autoacompanhamento',
+        })
+        .select('id')
+        .single();
+      if (insErr || !created) {
+        throw new NotFoundException('Falha ao criar autoacompanhamento');
+      }
+      return created.id as string;
     }
-    return data.id as string;
+
+    throw new NotFoundException(
+      'Usuário sem cadastro de paciente — peça à clínica para cadastrá-lo',
+    );
   }
 
   // ---- Conexão via URL MCP ------------------------------------------------ //
