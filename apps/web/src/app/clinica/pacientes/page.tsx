@@ -6,7 +6,7 @@ import { Icon } from '@/components/icons';
 import { Ring, Sparkline } from '@/components/charts';
 import { Avatar, DeviceBadge, PatientCard, PerfBadge, adhColor, syncLabel, EmptyState } from '@/components/ui';
 import { DEVICES, fmt, type Patient } from '@/lib/clinic-data';
-import { loadClinicPatients, type DataSource } from '@/lib/patient-source';
+import { loadClinicPatients } from '@/lib/patient-source';
 import { apiFetch } from '@/lib/api';
 
 const FILTERS = [
@@ -40,7 +40,6 @@ function PatientsInner() {
   const initialFilter = searchParams.get('filter');
 
   const [all, setAll] = useState<Patient[]>([]);
-  const [source, setSource] = useState<DataSource>('demo');
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [active, setActive] = useState<string[]>(() => (initialFilter ? [initialFilter] : load('ic_filters', [])));
@@ -57,7 +56,6 @@ function PatientsInner() {
     loadClinicPatients().then((r) => {
       if (!alive) return;
       setAll(r.patients);
-      setSource(r.source);
       setLoading(false);
     });
     return () => {
@@ -107,7 +105,6 @@ function PatientsInner() {
       setInviteForm({ nome: '', email: '', phone: '', objetivo: '' });
       const r = await loadClinicPatients();
       setAll(r.patients);
-      setSource(r.source);
     } catch (err) {
       setInviteError(err instanceof Error ? err.message : 'Erro ao convidar paciente');
     } finally {
@@ -184,15 +181,6 @@ function PatientsInner() {
           </button>
         </div>
       </div>
-
-      {!loading && source === 'demo' && (
-        <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface-2)' }}>
-          <Icon n="info" size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            Modo demonstração — dados fictícios.
-          </span>
-        </div>
-      )}
 
       <div className="card card-pad" style={{ marginBottom: 16 }}>
         <div className="row gap12" style={{ flexWrap: 'wrap' }}>

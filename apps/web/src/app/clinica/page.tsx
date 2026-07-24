@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { LineChart, BarChart, Donut, Ring } from '@/components/charts';
 import { MetricCard, Avatar, adhColor, syncLabel, LoadingSkeleton } from '@/components/ui';
-import { DATA, fmt, type Patient } from '@/lib/clinic-data';
+import { fmt, type Patient } from '@/lib/clinic-data';
 import { loadClinicPatients } from '@/lib/patient-source';
 import { loadAlerts } from '@/lib/alerts-source';
 
@@ -20,17 +20,16 @@ interface ClinicStats {
 
 function KpiStrip({ c, goPatients, goAlerts }: { c: ClinicStats; goPatients: (f?: string) => void; goAlerts: () => void }) {
   const kpis = [
-    { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', trend: 4, sub: '3 novos esta semana' },
-    { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', trend: 6, sub: 'sincronizando < 48h' },
-    { icon: 'wifiOff', label: 'Sem sincronização', value: c.noSync, accent: 'var(--warn)', trend: 12, trendInvert: true, sub: 'precisam reconectar', go: () => goPatients('sem-sync') },
-    { icon: 'trend', label: 'Baixa aderência', value: c.lowAdherence, accent: 'var(--crit)', trend: -8, trendInvert: true, sub: '< 50% de meta', go: () => goPatients('baixa-aderencia') },
-    { icon: 'warn', label: 'Alertas críticos', value: c.critAlerts, accent: 'var(--crit)', trend: -2, trendInvert: true, sub: 'requerem ação', go: goAlerts },
-    { icon: 'sparkle', label: 'Evolução semanal', value: '+' + c.weeklyEvolution + '%', accent: 'var(--good)', trend: c.weeklyEvolution, sub: 'aderência média da clínica' },
+    { icon: 'users', label: 'Total de pacientes', value: c.totalPatients, accent: 'var(--accent)', sub: 'cadastrados na clínica' },
+    { icon: 'pulse', label: 'Pacientes ativos', value: c.activePatients, accent: 'var(--info)', sub: 'sincronizando < 48h' },
+    { icon: 'wifiOff', label: 'Sem sincronização', value: c.noSync, accent: 'var(--warn)', sub: 'precisam reconectar', go: () => goPatients('sem-sync') },
+    { icon: 'trend', label: 'Baixa aderência', value: c.lowAdherence, accent: 'var(--crit)', sub: '< 50% de meta', go: () => goPatients('baixa-aderencia') },
+    { icon: 'warn', label: 'Alertas críticos', value: c.critAlerts, accent: 'var(--crit)', sub: 'requerem ação', go: goAlerts },
   ];
   return (
     <div className="metrics-grid stagger">
       {kpis.map((k, i) => (
-        <MetricCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} trend={k.trend} trendInvert={k.trendInvert} sub={k.sub} onClick={k.go} />
+        <MetricCard key={i} icon={k.icon} label={k.label} value={k.value} accent={k.accent} sub={k.sub} onClick={k.go} />
       ))}
     </div>
   );
@@ -117,10 +116,8 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
   );
 }
 
-const ALLOW_DEMO = process.env.NEXT_PUBLIC_ALLOW_DEMO === 'true';
-
 function aggregate(patients: Patient[], key: 'steps' | 'calories' | 'sleep') {
-  if (patients.length === 0) return ALLOW_DEMO ? DATA.agg[key] : [];
+  if (patients.length === 0) return [];
   const ref = patients[0]!.s[key];
   const dec = key === 'sleep';
   return ref.map((point, idx) => {
@@ -145,8 +142,11 @@ export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [userName, setUserName] = useState('');
-  const [patients, setPatients] = useState<Patient[]>(DATA.patients);
-  const [stats, setStats] = useState<ClinicStats>(DATA.clinic);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [stats, setStats] = useState<ClinicStats>({
+    totalPatients: 0, activePatients: 0, noSync: 0,
+    lowAdherence: 0, critAlerts: 0, weeklyEvolution: 0,
+  });
 
   useEffect(() => {
     import('@/lib/api').then(({ apiFetch }) =>
@@ -173,8 +173,8 @@ export default function DashboardPage() {
         activePatients: ps.filter((p) => p.syncHours <= 48).length,
         noSync: ps.filter((p) => p.syncHours > 48).length,
         lowAdherence: ps.filter((p) => p.adherence < 50).length,
-        critAlerts: critReais ?? DATA.clinic.critAlerts,
-        weeklyEvolution: DATA.clinic.weeklyEvolution,
+        critAlerts: critReais ?? 0,
+        weeklyEvolution: 0,
       });
       setLoading(false);
     }).catch(() => setLoading(false));

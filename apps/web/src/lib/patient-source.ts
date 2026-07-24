@@ -1,9 +1,7 @@
-/* IC Clínica — Fonte de pacientes: tenta a API real, cai para demo. */
+/* IC Clínica — Fonte de pacientes: apenas dados reais da API (sem demo). */
 import { apiFetch } from './api';
 import {
-  DATA,
   synthPatient,
-  byId,
   type Patient,
   type ApiPatientLike,
   type SeriesPoint,
@@ -34,10 +32,7 @@ function toApiLike(row: ApiPatientRow): ApiPatientLike {
   return { id: row.id, name: nomeDe(row), objetivo: row.objetivo };
 }
 
-/** Só mostra dados fictícios se explicitamente habilitado (nunca em produção). */
-const ALLOW_DEMO = process.env.NEXT_PUBLIC_ALLOW_DEMO === 'true';
-
-/** Lista de pacientes reais da clínica (da API). Sem dados fictícios por padrão. */
+/** Lista de pacientes reais da clínica (da API). NUNCA usa dados fictícios. */
 export async function loadClinicPatients(): Promise<PatientsResult> {
   try {
     const rows = await apiFetch<ApiPatientRow[]>('/patients');
@@ -45,19 +40,13 @@ export async function loadClinicPatients(): Promise<PatientsResult> {
       return { patients: rows.map((r) => synthPatient(toApiLike(r))), source: 'api' };
     }
   } catch {
-    if (ALLOW_DEMO) return { patients: DATA.patients, source: 'demo' };
+    /* API indisponível → lista vazia (a UI mostra o estado "sem pacientes"). */
   }
-  // Sem demo em produção: lista vazia real (a UI mostra o estado "sem pacientes").
-  if (ALLOW_DEMO) return { patients: DATA.patients, source: 'demo' };
   return { patients: [], source: 'api' };
 }
 
-/** Um paciente pelo id: demo (p1..p15) ou busca na API e sintetiza o view-model. */
+/** Um paciente pelo id (busca na API e sintetiza o view-model). */
 export async function loadPatient(id: string): Promise<Patient | null> {
-  if (ALLOW_DEMO) {
-    const demo = byId(id);
-    if (demo) return demo;
-  }
   try {
     const row = await apiFetch<ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null }>(`/patients/${id}`);
     if (row && row.id) {
