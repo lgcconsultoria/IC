@@ -216,7 +216,7 @@ export default function ConnectGarminPage() {
           <button className="btn ghost" onClick={async () => { await getSupabase().auth.signOut(); router.push('/portal/login'); }}>
             <Icon n="logout" size={15} />Sair
           </button>
-          <button className="btn primary" onClick={() => router.push('/clinica')}>
+          <button className="btn primary" onClick={() => router.push('/portal/painel')}>
             {step === 'done' ? 'Concluir e ver meu painel' : 'Pular por agora'}
             <Icon n="arrowRight" size={16} />
           </button>

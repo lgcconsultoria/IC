@@ -20,7 +20,7 @@ export default function PatientLoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email, password: pw });
       if (error) throw error;
-      router.push('/portal/conectar');
+      router.push('/portal/painel');
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Falha no login');
     } finally {
@@ -33,7 +33,7 @@ export default function PatientLoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithOAuth({
         provider,
-        options: { redirectTo: typeof window !== 'undefined' ? window.location.origin + '/portal/conectar' : undefined },
+        options: { redirectTo: typeof window !== 'undefined' ? window.location.origin + '/portal/painel' : undefined },
       });
       if (error) throw error;
     } catch (err) {

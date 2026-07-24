@@ -96,6 +96,46 @@ export async function loadPatientWearables(
   }
 }
 
+/** Dados do próprio paciente logado (id do registro em patients). */
+export interface MeRow {
+  id: string;
+  objetivo?: string | null;
+}
+export async function loadMe(): Promise<MeRow | null> {
+  try {
+    const row = await apiFetch<MeRow>('/patients/me');
+    return row && row.id ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface WearableActivityRow {
+  id: string;
+  inicio: string;
+  fim: string | null;
+  tipo: string;
+  kcal: number | null;
+  fc_media: number | null;
+  fc_max: number | null;
+  distancia_m: number | null;
+}
+
+/** Atividades/treinos reais do paciente; [] se não houver/indisponível. */
+export async function loadPatientActivities(
+  id: string,
+  days = 180,
+): Promise<WearableActivityRow[]> {
+  try {
+    const rows = await apiFetch<WearableActivityRow[]>(
+      `/patients/${id}/wearable-activities?days=${days}`,
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
 function toSeries(
   rows: WearableDailyRow[],
   pick: (r: WearableDailyRow) => number | null,
