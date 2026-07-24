@@ -92,6 +92,8 @@ produção é:
 > Enquanto a API ficar na Vercel, o poller não inicia (sem `REDIS_URL`); a coleta
 > pode ser disparada sob demanda por `POST /api/garmin/sync`. O acompanhamento
 > contínuo exige o host persistente.
+>
+> 👉 Passo a passo do host persistente no **Railway**: [`deploy-railway.md`](deploy-railway.md).
 
 ### Variáveis de ambiente Garmin (host persistente)
 

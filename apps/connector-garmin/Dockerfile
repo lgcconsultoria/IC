@@ -12,4 +12,6 @@ ENV PORT=8000
 EXPOSE 8000
 
 # Sidecar interno — bind na rede do host persistente, não exposto publicamente.
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+# Host "::" (IPv6 dual-stack) é exigido pela rede privada do Railway; também
+# aceita IPv4 em Linux (aceita 127.0.0.1 no dev local).
+CMD ["sh", "-c", "uvicorn main:app --host :: --port ${PORT:-8000}"]
