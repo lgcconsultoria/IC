@@ -43,33 +43,29 @@ def login(email: str, password: str) -> str:
     """
     g = Garmin(email=email, password=password, return_on_mfa=True)
     result = g.login()
-    # Com return_on_mfa=True, login() retorna (status, client_state) quando há MFA.
-    if isinstance(result, tuple):
-        status, client_state = result
-        if status == "needs_mfa":
-            mfa_ctx = base64.b64encode(json.dumps(client_state).encode("utf-8")).decode("ascii")
-            raise MfaRequired(mfa_ctx)
-    return g.garth.dumps()
+    # Com return_on_mfa=True, login() retorna ("needs_mfa", client_state) quando
+    # há MFA; caso contrário (None, None) e o token já fica em g.client.
+    if isinstance(result, tuple) and result[0] == "needs_mfa":
+        client_state = result[1]
+        mfa_ctx = base64.b64encode(json.dumps(client_state).encode("utf-8")).decode("ascii")
+        raise MfaRequired(mfa_ctx)
+    return g.client.dumps()
 
 
 def resume_mfa(mfa_ctx: str, code: str) -> str:
     """Conclui um login pendente de MFA. Retorna o token bundle (base64)."""
     client_state = json.loads(base64.b64decode(mfa_ctx.encode("ascii")).decode("utf-8"))
-    g = Garmin(return_on_mfa=True)
+    g = Garmin()
     g.resume_login(client_state, code)
-    return g.garth.dumps()
+    return g.client.dumps()
 
 
 def login_with_token(token_b64: str) -> Garmin:
     """Instancia um cliente Garmin já autenticado a partir do token bundle."""
     g = Garmin()
-    g.garth.loads(token_b64)
-    try:
-        profile = g.garth.profile or {}
-        g.display_name = profile.get("displayName")
-        g.full_name = profile.get("fullName")
-    except Exception:  # noqa: BLE001 — perfil é opcional para puxar dados
-        pass
+    # login(tokenstore) com a string do dump (> 512 chars) carrega o token no
+    # client e popula display_name/settings, exigidos pelas chamadas de dados.
+    g.login(token_b64)
     return g
 
 
