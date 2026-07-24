@@ -186,7 +186,7 @@ export class PatientsService {
     // 0008/0009. As colunas de metabolismo são lidas sob demanda em getMetabolism.
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo')
+      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo, nome:users!user_id(nome)')
       .eq('id', patientId)
       .single();
     if (error || !data) throw new NotFoundException('Paciente não encontrado');

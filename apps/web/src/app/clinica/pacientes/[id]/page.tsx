@@ -10,14 +10,13 @@ import {
   PerfBadge,
   AdherenceScore,
   GoalProgress,
-  PatientTimeline,
   WeeklySummary,
   AlertCard,
   Trend,
   syncLabel,
 } from '@/components/ui';
-import { DATA, DEVICES, timelineFor, type Patient, type SeriesPoint, type AlertItem } from '@/lib/clinic-data';
-import { loadPatient, loadPatientWearables, applyRealWearables, loadMeasurements, applyRealWeight, createMeasurement } from '@/lib/patient-source';
+import { DEVICES, type Patient, type SeriesPoint, type AlertItem } from '@/lib/clinic-data';
+import { loadPatient, loadPatientWearables, loadPatientActivities, applyRealWearables, loadMeasurements, applyRealWeight, createMeasurement, loadGoals, type WearableActivityRow } from '@/lib/patient-source';
 import { loadPatientAlerts } from '@/lib/alerts-source';
 
 function Stat({ label, value, unit, trend, invert, color }: { label: string; value: ReactNode; unit?: string; trend?: number; invert?: boolean; color?: string }) {
@@ -47,6 +46,43 @@ function ChartBox({ title, sub, color, data, goal, unit, kind = 'line', fmtV, ta
         {tag}
       </div>
       {kind === 'bar' ? <BarChart data={data} color={color} height={150} unit={unit} goal={goal} fmtV={fmtV} /> : <LineChart data={data} color={color} height={150} unit={unit} goal={goal} fmtV={fmtV} />}
+    </div>
+  );
+}
+
+function dur(inicio: string, fim: string | null): string {
+  if (!fim) return '';
+  const min = Math.round((new Date(fim).getTime() - new Date(inicio).getTime()) / 60000);
+  if (!(min > 0)) return '';
+  return min >= 60 ? `${Math.floor(min / 60)}h${String(min % 60).padStart(2, '0')}` : `${min} min`;
+}
+
+/** Atividade recente REAL: treinos sincronizados do Garmin (mais recentes primeiro). */
+function RecentActivity({ acts, limit }: { acts: WearableActivityRow[]; limit?: number }) {
+  const list = [...acts].sort((a, b) => b.inicio.localeCompare(a.inicio)).slice(0, limit ?? acts.length);
+  if (list.length === 0) {
+    return (
+      <p style={{ fontSize: 12.5, color: 'var(--text-faint)', padding: '10px 0' }}>
+        Sem atividade recente. Aparecem aqui os treinos sincronizados do Garmin e os registros do paciente.
+      </p>
+    );
+  }
+  return (
+    <div style={{ display: 'grid', gap: 8 }}>
+      {list.map((a) => (
+        <div key={a.id} className="between" style={{ padding: '8px 10px', background: 'var(--surface-2)', borderRadius: 9 }}>
+          <div className="row gap8" style={{ minWidth: 0 }}>
+            <Icon n="activity" size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.tipo || 'Treino'}</div>
+              <div style={{ fontSize: 11, color: 'var(--text-faint)' }}>
+                {new Date(a.inicio).toLocaleDateString('pt-BR')}{dur(a.inicio, a.fim) ? ' · ' + dur(a.inicio, a.fim) : ''}
+              </div>
+            </div>
+          </div>
+          <span className="tnum" style={{ fontSize: 12, fontWeight: 700 }}>{a.kcal != null ? a.kcal + ' kcal' : '—'}</span>
+        </div>
+      ))}
     </div>
   );
 }
@@ -147,6 +183,8 @@ export default function ProfilePage() {
   const [reporting, setReporting] = useState(false);
   const [realData, setRealData] = useState(false);
   const [alerts, setAlerts] = useState<AlertItem[] | null>(null);
+  const [goalWeight, setGoalWeight] = useState<number | null>(null);
+  const [recentActs, setRecentActs] = useState<WearableActivityRow[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -161,14 +199,31 @@ export default function ProfilePage() {
         return;
       }
       let merged = res;
-      // dados reais de wearable (ROOK)
-      const rows = await loadPatientWearables(id);
+      // dados reais de wearable (Garmin) + treinos
+      const [rows, acts] = await Promise.all([
+        loadPatientWearables(id, 180),
+        loadPatientActivities(id, 180),
+      ]);
       if (!alive) return;
       if (rows.length > 0) {
         merged = applyRealWearables(merged, rows);
         setRealData(true);
       }
-      // peso real (medições da equipe)
+      if (acts.length > 0) {
+        merged = { ...merged, workouts: acts.length };
+        setRealData(true);
+      }
+      setRecentActs(acts);
+      // última sincronização REAL: data mais recente entre treinos e séries diárias
+      const times = [
+        ...acts.map((a) => new Date(a.inicio).getTime()),
+        ...rows.map((r) => new Date(r.data + 'T00:00:00').getTime()),
+      ].filter((t) => Number.isFinite(t));
+      if (times.length > 0) {
+        const last = Math.max(...times);
+        merged = { ...merged, syncHours: Math.max(0, Math.round((Date.now() - last) / 3_600_000)) };
+      }
+      // peso real (medições da equipe) sobrepõe o peso da nutrição, se houver
       const meas = await loadMeasurements(id);
       if (!alive) return;
       if (meas.length > 0) merged = applyRealWeight(merged, meas);
@@ -177,6 +232,7 @@ export default function ProfilePage() {
       const al = await loadPatientAlerts(id);
       if (!alive) return;
       setAlerts(al);
+      loadGoals(id).then((g) => { if (alive) setGoalWeight(g?.meta_peso_kg ?? null); });
       setLoading(false);
     });
     return () => {
@@ -207,7 +263,7 @@ export default function ProfilePage() {
     );
   }
 
-  const myAlerts = alerts ?? DATA.alerts.filter((a) => a.patient === p.id);
+  const myAlerts = alerts ?? [];
   const bmi = (p.weight / Math.pow(p.heightCm / 100, 2)).toFixed(1);
   const goGoals = () => router.push(`/clinica/pacientes/${p.id}/metas`);
 
@@ -247,11 +303,9 @@ export default function ProfilePage() {
         <div className="card card-pad">
           <div className="section-title" style={{ fontSize: 15, marginBottom: 4 }}>Resumo clínico-comportamental</div>
           <p style={{ fontSize: 12.5, color: 'var(--text-muted)', lineHeight: 1.6, marginTop: 8 }}>
-            {p.perf === 'high'
-              ? `${p.name.split(' ')[0]} mantém excelente engajamento: atividade consistente, sono dentro da meta e aderência crescente. Bom candidato a progressão de metas.`
-              : p.perf === 'mid'
-              ? `${p.name.split(' ')[0]} apresenta padrão irregular — boa atividade em dias úteis, queda nos fins de semana. Sono ligeiramente abaixo da meta. Reforço comportamental recomendado.`
-              : `${p.name.split(' ')[0]} mostra sinais de baixa aderência e possível desmotivação. Atividade e sono abaixo das metas, sincronização irregular. Requer contato ativo e revisão de metas.`}
+            {realData
+              ? `Acompanhe os dados de ${p.name.split(' ')[0]} nas abas ao lado. Use "Gerar relatório IA" para um resumo clínico automático a partir das métricas reais do período.`
+              : `Sem dados suficientes para um resumo. Assim que ${p.name.split(' ')[0]} sincronizar o wearable e houver medições registradas, o resumo e o relatório de IA passam a refletir os dados reais.`}
           </p>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 12 }}>
             {p.tags.map((t) => (
@@ -262,10 +316,10 @@ export default function ProfilePage() {
         <div className="card card-pad">
           <div className="section-title" style={{ fontSize: 15, marginBottom: 12 }}>Sinais vitais (médias)</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-            <Stat label="FC repouso" value={p.restingHr} unit="bpm" color="var(--c-hr)" trend={p.perf === 'high' ? -3 : 4} invert />
-            <Stat label="HRV" value={p.hrv} unit="ms" color="var(--c-hrv)" trend={p.perf === 'high' ? 6 : -5} />
-            <Stat label="Peso" value={p.weight} unit="kg" color="var(--c-weight)" trend={-1.1} invert />
-            <Stat label="IMC" value={bmi} color="var(--text)" />
+            <Stat label="FC repouso" value={p.restingHr || '—'} unit="bpm" color="var(--c-hr)" />
+            <Stat label="HRV" value={p.hrv || '—'} unit="ms" color="var(--c-hrv)" />
+            <Stat label="Peso" value={p.weight || '—'} unit="kg" color="var(--c-weight)" />
+            <Stat label="IMC" value={p.weight ? bmi : '—'} color="var(--text)" />
           </div>
         </div>
         {myAlerts.length > 0 && (
@@ -283,7 +337,7 @@ export default function ProfilePage() {
         )}
         <div className="card card-pad">
           <div className="section-title" style={{ fontSize: 15, marginBottom: 14 }}>Atividade recente</div>
-          <PatientTimeline items={timelineFor(p).slice(0, 4)} />
+          <RecentActivity acts={recentActs} limit={5} />
         </div>
       </div>
     </div>
@@ -355,12 +409,16 @@ export default function ProfilePage() {
       <MeasurementForm patientId={p.id} onSaved={reloadWeight} />
       <ChartBox title="Evolução de peso" sub="kg · 30 dias" color="var(--c-weight)" data={p.s.weight} fmtV={(v) => v + ' kg'} />
       <div className="grid" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-        {([['Peso atual', p.weight + ' kg', -1.1], ['IMC', bmi, -0.3], ['Altura', p.heightCm + ' cm', null], ['Meta de peso', p.weight - 4 + ' kg', null]] as [string, string, number | null][]).map((s, i) => (
+        {([
+          ['Peso atual', p.weight ? p.weight + ' kg' : '—'],
+          ['IMC', p.weight && p.heightCm ? bmi : '—'],
+          ['Altura', p.heightCm ? p.heightCm + ' cm' : '—'],
+          ['Meta de peso', goalWeight != null ? goalWeight + ' kg' : '—'],
+        ] as [string, string][]).map((s, i) => (
           <div key={i} className="card card-pad">
             <div style={{ fontSize: 11.5, color: 'var(--text-muted)', fontWeight: 600 }}>{s[0]}</div>
             <div className="row gap8" style={{ alignItems: 'baseline', marginTop: 5 }}>
               <span className="tnum" style={{ fontSize: 22, fontWeight: 800 }}>{s[1]}</span>
-              {s[2] != null && <Trend value={s[2]} suffix="kg" invert />}
             </div>
           </div>
         ))}
@@ -398,7 +456,7 @@ export default function ProfilePage() {
     <div className="grid" style={{ gridTemplateColumns: '1.4fr 1fr', alignItems: 'start' }}>
       <div className="card card-pad">
         <div className="section-title" style={{ fontSize: 15, marginBottom: 16 }}>Linha do tempo de eventos</div>
-        <PatientTimeline items={timelineFor(p)} />
+        <RecentActivity acts={recentActs} />
       </div>
       {myAlerts.length > 0 && (
         <div className="grid">
@@ -425,24 +483,26 @@ export default function ProfilePage() {
             <div>
               <div className="row gap10" style={{ flexWrap: 'wrap' }}>
                 <h2 style={{ fontSize: 21, fontWeight: 800, letterSpacing: '-0.02em' }}>{p.name}</h2>
-                <PerfBadge perf={p.perf} />
-                <span className={'badge ' + (realData ? 'good' : 'neutral')} title={realData ? 'Métricas reais sincronizadas via wearable' : 'Métricas demonstrativas até a sincronização do wearable'}>
-                  <span className="bdot" />
-                  {realData ? 'dados reais' : 'demonstrativo'}
-                </span>
+                {realData && p.adherence > 0 && <PerfBadge perf={p.perf} />}
+                {realData && (
+                  <span className="badge good"><span className="bdot" />dados reais</span>
+                )}
               </div>
               <div className="row gap12" style={{ marginTop: 6, color: 'var(--text-muted)', fontSize: 12.5, flexWrap: 'wrap' }}>
                 <span className="row gap6">
                   <Icon n="user" size={13} />
-                  {p.age + ' anos · ' + (p.sex === 'f' ? 'Feminino' : 'Masculino')}
+                  {(p.age ? p.age + ' anos · ' : '') + (p.sex === 'f' ? 'Feminino' : 'Masculino')}
                 </span>
                 <span className="row gap6">
                   <DeviceBadge device={p.device} size={18} />
                   {DEVICES[p.device].name}
                 </span>
                 <span className="row gap6">
-                  <Icon n={p.syncHours > 48 ? 'wifiOff' : 'sync'} size={13} style={{ color: p.syncHours > 48 ? 'var(--crit)' : 'var(--good)' }} />
-                  {'Sync ' + syncLabel(p.syncHours)}
+                  {p.syncHours >= 9999 ? (
+                    <><Icon n="wifiOff" size={13} style={{ color: 'var(--text-faint)' }} />Sem sincronização</>
+                  ) : (
+                    <><Icon n={p.syncHours > 48 ? 'wifiOff' : 'sync'} size={13} style={{ color: p.syncHours > 48 ? 'var(--crit)' : 'var(--good)' }} />{'Sync ' + syncLabel(p.syncHours)}</>
+                  )}
                 </span>
               </div>
             </div>

@@ -45,23 +45,44 @@ export async function loadClinicPatients(): Promise<PatientsResult> {
   return { patients: [], source: 'api' };
 }
 
-/** Um paciente pelo id (busca na API e sintetiza o view-model). */
+function ageFrom(dataNasc: string | null | undefined): number | null {
+  if (!dataNasc) return null;
+  const n = new Date(dataNasc);
+  if (Number.isNaN(n.getTime())) return null;
+  const t = new Date();
+  let a = t.getFullYear() - n.getFullYear();
+  const m = t.getMonth() - n.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < n.getDate())) a--;
+  return a;
+}
+
+/** Um paciente pelo id — identidade real (nome/idade/sexo/altura) + peso real
+ *  (da nutrição/metabolismo). Séries de wearable ficam vazias até virem reais. */
 export async function loadPatient(id: string): Promise<Patient | null> {
   try {
-    const row = await apiFetch<ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null }>(`/patients/${id}`);
-    if (row && row.id) {
-      return synthPatient({
-        id: row.id,
-        name: nomeDe(row),
-        objetivo: row.objetivo,
-        sexo: row.sexo ?? null,
-        alturaCm: row.altura_cm ?? null,
-      });
+    const row = await apiFetch<
+      ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null; data_nasc?: string | null }
+    >(`/patients/${id}`);
+    if (!row || !row.id) return null;
+    const p = synthPatient({
+      id: row.id,
+      name: nomeDe(row),
+      objetivo: row.objetivo,
+      sexo: row.sexo ?? null,
+      alturaCm: row.altura_cm ?? null,
+      age: ageFrom(row.data_nasc),
+    });
+    // Peso canônico = o da nutrição/metabolismo (o mesmo que a nutri digita).
+    try {
+      const met = await apiFetch<{ peso_kg: number | null; tmb?: number | null }>(`/patients/${id}/metabolism`);
+      if (met?.peso_kg != null) p.weight = met.peso_kg;
+    } catch {
+      /* metabolismo pode não existir ainda */
     }
+    return p;
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
 }
 
 // ----- Wearables reais (Garmin) -----------------------------------------------
