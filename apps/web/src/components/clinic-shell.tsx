@@ -161,7 +161,11 @@ export function ClinicShell({ children }: { children: ReactNode }) {
     // Load profile name/role from API if available
     import('@/lib/api').then(({ apiFetch }) =>
       apiFetch<{ nome: string; role: string }>('/users/me')
-        .then((p) => { setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role); })
+        .then((p) => {
+          // Paciente NÃO acessa a área da clínica — vai para o painel dele.
+          if (p.role === 'paciente') { router.replace('/portal/painel'); return; }
+          setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role);
+        })
         .catch(() => {
           getSupabase().auth.getUser().then(({ data }) => {
             if (data.user?.email) setUserName(data.user.email.split('@')[0]);
