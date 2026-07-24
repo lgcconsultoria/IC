@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, InternalServerErrorException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SUPABASE_ADMIN } from '../supabase/supabase.module';
@@ -12,12 +12,20 @@ export class UsersService {
   ) {}
 
   async getMe(user: AppUser) {
+    // user.id é o public.users.id (o guard já resolveu a linha do usuário).
     const { data, error } = await this.db
       .from('users')
       .select('id, nome, email, phone, role, crm, especialidade')
-      .eq('auth_uid', user.id)
-      .single();
-    if (error) throw new NotFoundException('Perfil não encontrado');
+      .eq('id', user.id)
+      .maybeSingle();
+    if (error) throw new InternalServerErrorException(error.message);
+    if (!data) {
+      // fallback: devolve o que o guard já resolveu, para nunca 404 um usuário válido
+      return {
+        id: user.id, nome: user.nome, email: user.email,
+        phone: null, role: user.role, crm: null, especialidade: null,
+      };
+    }
     return data;
   }
 
@@ -33,7 +41,7 @@ export class UsersService {
     const { data, error } = await this.db
       .from('users')
       .update(allowed)
-      .eq('auth_uid', user.id)
+      .eq('id', user.id)
       .select('id, nome, email, phone, role, crm, especialidade')
       .single();
     if (error) throw new InternalServerErrorException(error.message);

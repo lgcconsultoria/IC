@@ -56,6 +56,15 @@ interface LineChartProps {
   showDots?: boolean;
 }
 
+/** Placeholder para gráficos sem dados (evita crash com séries vazias). */
+function EmptyChart({ refEl, height }: { refEl: React.RefObject<HTMLDivElement | null>; height: number }) {
+  return (
+    <div ref={refEl} style={{ width: '100%', height, display: 'grid', placeItems: 'center' }}>
+      <span style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>Sem dados no período</span>
+    </div>
+  );
+}
+
 export function LineChart({
   data,
   color = 'var(--accent)',
@@ -75,6 +84,7 @@ export function LineChart({
     padB = 20;
   const W = Math.max(w, 60),
     H = height;
+  if (data.length === 0) return <EmptyChart refEl={ref} height={height} />;
   const vals = data.map((d) => d.value);
   let min = Math.min(...vals),
     max = Math.max(...vals);
@@ -178,6 +188,7 @@ export function BarChart({ data, color = 'var(--accent)', height = 150, unit = '
     gap = 0.34;
   const W = Math.max(w, 60),
     H = height;
+  if (data.length === 0) return <EmptyChart refEl={ref} height={height} />;
   const vals = data.map((d) => d.value);
   const max = Math.max(...vals, goal || 0) * 1.15 || 1;
   const bw = W / data.length;
@@ -244,6 +255,7 @@ interface SparklineProps {
 }
 
 export function Sparkline({ data, color = 'var(--accent)', width = 96, height = 30, area = true }: SparklineProps) {
+  if (data.length === 0) return <svg width={width} height={height} style={{ display: 'block' }} />;
   const vals = data.map((d) => d.value);
   const min = Math.min(...vals),
     max = Math.max(...vals),
