@@ -71,9 +71,16 @@ export class GarminConnectorClient {
       throw new ServiceUnavailableException('Serviço de conexão Garmin indisponível');
     }
     if (!res.ok) {
-      const text = await res.text();
-      // 401 do sidecar = credenciais/MFA inválidas → propaga como erro de negócio
-      throw new GarminConnectorError(res.status, text);
+      let detail = await res.text();
+      // O sidecar (FastAPI) responde erros como {"detail":"..."}; extrai a
+      // mensagem real para propagá-la ao cliente em vez do JSON cru.
+      try {
+        const j = JSON.parse(detail) as { detail?: string };
+        if (j?.detail) detail = j.detail;
+      } catch {
+        /* mantém o texto cru */
+      }
+      throw new GarminConnectorError(res.status, detail);
     }
     return res.json() as Promise<T>;
   }

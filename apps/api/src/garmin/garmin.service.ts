@@ -1,4 +1,5 @@
 import {
+  BadGatewayException,
   BadRequestException,
   Inject,
   Injectable,
@@ -69,8 +70,13 @@ export class GarminService {
     try {
       result = await this.connector.login(email, password);
     } catch (e) {
-      if (e instanceof GarminConnectorError && e.status === 401) {
-        throw new UnauthorizedException('E-mail ou senha do Garmin inválidos');
+      if (e instanceof GarminConnectorError) {
+        if (e.status === 401) {
+          throw new UnauthorizedException('E-mail ou senha do Garmin inválidos');
+        }
+        // 502/outros: mostra o motivo real do Garmin (captcha, verificação de
+        // novo dispositivo, bloqueio de IP, MFA não detectado, etc.).
+        throw new BadGatewayException(e.detail || 'Falha ao conectar ao Garmin');
       }
       throw e;
     }
@@ -106,8 +112,11 @@ export class GarminService {
     try {
       result = await this.connector.loginMfa(mfaCtx, code);
     } catch (e) {
-      if (e instanceof GarminConnectorError && e.status === 401) {
-        throw new UnauthorizedException('Código MFA inválido ou expirado');
+      if (e instanceof GarminConnectorError) {
+        if (e.status === 401) {
+          throw new UnauthorizedException('Código MFA inválido ou expirado');
+        }
+        throw new BadGatewayException(e.detail || 'Falha na verificação MFA');
       }
       throw e;
     }

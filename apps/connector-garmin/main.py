@@ -58,6 +58,11 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+def _err_detail(exc: Exception) -> str:
+    msg = (str(exc) or exc.__class__.__name__).strip()
+    return msg[:400]
+
+
 @app.post("/login", dependencies=[Depends(require_secret)])
 def login(body: LoginBody) -> dict[str, str]:
     try:
@@ -66,8 +71,12 @@ def login(body: LoginBody) -> dict[str, str]:
     except gc.MfaRequired as mfa:
         return {"status": "mfa_required", "mfa_ctx": mfa.mfa_ctx}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("login falhou: %s", exc)
-        raise HTTPException(status_code=401, detail="Credenciais Garmin inválidas") from exc
+        detail = _err_detail(exc)
+        logger.warning("login falhou: %s", detail)
+        # 502 (não 401) + mensagem real: o Garmin pode recusar por captcha,
+        # verificação de novo dispositivo ou bloqueio de IP de datacenter —
+        # não necessariamente credencial inválida. Surfamos o motivo real.
+        raise HTTPException(status_code=502, detail=f"Falha no login Garmin: {detail}") from exc
 
 
 @app.post("/login/mfa", dependencies=[Depends(require_secret)])
@@ -76,8 +85,9 @@ def login_mfa(body: MfaBody) -> dict[str, str]:
         token = gc.resume_mfa(body.mfa_ctx, body.code)
         return {"status": "ok", "token": token}
     except Exception as exc:  # noqa: BLE001
-        logger.warning("mfa falhou: %s", exc)
-        raise HTTPException(status_code=401, detail="Código MFA inválido ou expirado") from exc
+        detail = _err_detail(exc)
+        logger.warning("mfa falhou: %s", detail)
+        raise HTTPException(status_code=502, detail=f"Falha na verificação MFA: {detail}") from exc
 
 
 @app.post("/sync", dependencies=[Depends(require_secret)])
