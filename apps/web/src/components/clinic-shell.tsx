@@ -93,19 +93,6 @@ function Sidebar({ critCount, open, onClose, userName, userRole, onLogout }: {
           ))}
         </nav>
         <div className="sb-foot">
-          <div className="card" style={{ padding: 11, background: 'var(--accent-soft)', border: 'none', marginBottom: 8 }}>
-            <div className="between" style={{ color: 'var(--accent-ink)', marginBottom: 5 }}>
-              <span className="row gap6" style={{ fontWeight: 700, fontSize: 12 }}>
-                <Icon n="sparkle" size={14} />
-                Garmin
-              </span>
-              <span className="row gap6" style={{ fontSize: 10.5, fontWeight: 700 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 50, background: 'currentColor' }} />
-                ativa
-              </span>
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--accent-ink)', opacity: 0.8, lineHeight: 1.4 }}>9 integrações · sync em tempo real</div>
-          </div>
           <div className="sb-user">
             <div className="avatar" style={{ width: 34, height: 34, background: 'var(--accent)', fontSize: 13 }}>
               {initials}

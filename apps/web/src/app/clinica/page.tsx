@@ -117,8 +117,10 @@ function PriorityList({ patients, goPatients, goPatient }: { patients: Patient[]
   );
 }
 
+const ALLOW_DEMO = process.env.NEXT_PUBLIC_ALLOW_DEMO === 'true';
+
 function aggregate(patients: Patient[], key: 'steps' | 'calories' | 'sleep') {
-  if (patients.length === 0) return DATA.agg[key];
+  if (patients.length === 0) return ALLOW_DEMO ? DATA.agg[key] : [];
   const ref = patients[0]!.s[key];
   const dec = key === 'sleep';
   return ref.map((point, idx) => {

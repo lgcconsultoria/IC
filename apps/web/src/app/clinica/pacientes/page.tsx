@@ -185,13 +185,11 @@ function PatientsInner() {
         </div>
       </div>
 
-      {!loading && (
-        <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: source === 'api' ? 'var(--good-soft)' : 'var(--surface-2)' }}>
-          <Icon n={source === 'api' ? 'sync' : 'info'} size={15} style={{ color: source === 'api' ? 'var(--good)' : 'var(--text-muted)', flexShrink: 0 }} />
+      {!loading && source === 'demo' && (
+        <div className="card card-pad" style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', background: 'var(--surface-2)' }}>
+          <Icon n="info" size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
           <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-            {source === 'api'
-              ? 'Pacientes carregados da API. Métricas de wearable são demonstrativas até a sincronização via Terra.'
-              : 'Modo demonstração — dados fictícios. Conecte a API e cadastre pacientes para ver dados reais.'}
+            Modo demonstração — dados fictícios.
           </span>
         </div>
       )}
@@ -240,23 +238,29 @@ function PatientsInner() {
 
       {list.length === 0 ? (
         <div className="card">
-          <EmptyState
-            icon="search"
-            title="Nenhum paciente encontrado"
-            desc="Ajuste os filtros ou o termo de busca para ver resultados."
-            action={
-              <button
-                className="btn soft"
-                style={{ marginTop: 12 }}
-                onClick={() => {
-                  setQ('');
-                  setActive([]);
-                }}
-              >
-                Limpar filtros
-              </button>
-            }
-          />
+          {all.length === 0 ? (
+            <EmptyState
+              icon="users"
+              title="Nenhum paciente cadastrado ainda"
+              desc="Cadastre o primeiro paciente da clínica para começar a acompanhar os dados."
+              action={
+                <button className="btn primary" style={{ marginTop: 12 }} onClick={() => { setShowInvite(true); setInviteError(null); }}>
+                  <Icon n="plus" size={15} />Novo paciente
+                </button>
+              }
+            />
+          ) : (
+            <EmptyState
+              icon="search"
+              title="Nenhum paciente encontrado"
+              desc="Ajuste os filtros ou o termo de busca para ver resultados."
+              action={
+                <button className="btn soft" style={{ marginTop: 12 }} onClick={() => { setQ(''); setActive([]); }}>
+                  Limpar filtros
+                </button>
+              }
+            />
+          )}
         </div>
       ) : view === 'cards' ? (
         <div className="grid stagger" style={{ gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))' }}>

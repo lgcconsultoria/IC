@@ -136,7 +136,7 @@ export default function RegistrarRefeicaoPage() {
               <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>Foto + estimativa de calorias por IA</div>
             </div>
           </div>
-          <button className="btn ghost sm" onClick={() => router.push('/portal/conectar')}>
+          <button className="btn ghost sm" onClick={() => router.push('/portal/painel')}>
             <Icon n="chevL" size={14} /> Voltar
           </button>
         </div>

@@ -34,23 +34,30 @@ function toApiLike(row: ApiPatientRow): ApiPatientLike {
   return { id: row.id, name: nomeDe(row), objetivo: row.objetivo };
 }
 
-/** Lista de pacientes para o painel: API real quando disponível, senão demo. */
+/** Só mostra dados fictícios se explicitamente habilitado (nunca em produção). */
+const ALLOW_DEMO = process.env.NEXT_PUBLIC_ALLOW_DEMO === 'true';
+
+/** Lista de pacientes reais da clínica (da API). Sem dados fictícios por padrão. */
 export async function loadClinicPatients(): Promise<PatientsResult> {
   try {
     const rows = await apiFetch<ApiPatientRow[]>('/patients');
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (Array.isArray(rows)) {
       return { patients: rows.map((r) => synthPatient(toApiLike(r))), source: 'api' };
     }
   } catch {
-    /* sem sessão / API indisponível / DB vazio → demo */
+    if (ALLOW_DEMO) return { patients: DATA.patients, source: 'demo' };
   }
-  return { patients: DATA.patients, source: 'demo' };
+  // Sem demo em produção: lista vazia real (a UI mostra o estado "sem pacientes").
+  if (ALLOW_DEMO) return { patients: DATA.patients, source: 'demo' };
+  return { patients: [], source: 'api' };
 }
 
 /** Um paciente pelo id: demo (p1..p15) ou busca na API e sintetiza o view-model. */
 export async function loadPatient(id: string): Promise<Patient | null> {
-  const demo = byId(id);
-  if (demo) return demo;
+  if (ALLOW_DEMO) {
+    const demo = byId(id);
+    if (demo) return demo;
+  }
   try {
     const row = await apiFetch<ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null }>(`/patients/${id}`);
     if (row && row.id) {
