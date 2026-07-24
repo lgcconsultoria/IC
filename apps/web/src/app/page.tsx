@@ -12,9 +12,9 @@ export default function Home() {
 
   useEffect(() => {
     async function route() {
-      const { data: { user } } = await getSupabase().auth.getUser();
-      if (!user) { setChecking(false); return; }
       try {
+        const { data: { user } } = await getSupabase().auth.getUser();
+        if (!user) { setChecking(false); return; }
         const { fetchRole, isStaffRole } = await import('@/lib/auth-route');
         const role = await fetchRole();
         if (role === 'paciente') { router.replace('/portal/painel'); return; }

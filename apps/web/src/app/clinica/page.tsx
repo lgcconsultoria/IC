@@ -196,8 +196,8 @@ export default function DashboardPage() {
     ],
     [patients],
   );
-  const avgAdh = patients.length ? Math.round(patients.reduce((a, p) => a + p.adherence, 0) / patients.length) : 67;
-  const avgSleep = patients.length ? (patients.reduce((a, p) => a + p.sleep, 0) / patients.length).toFixed(1) : '7.0';
+  const avgAdh = patients.length ? Math.round(patients.reduce((a, p) => a + p.adherence, 0) / patients.length) : 0;
+  const avgSleep = patients.length ? (patients.reduce((a, p) => a + p.sleep, 0) / patients.length).toFixed(1) : null;
 
   const goPatients = (f?: string) => router.push('/clinica/pacientes' + (f ? `?filter=${f}` : ''));
   const goPatient = (id: string) => router.push(`/clinica/pacientes/${id}`);
@@ -205,10 +205,10 @@ export default function DashboardPage() {
   const charts = (
     <div className="grid" style={{ gridTemplateColumns: '2fr 1fr', alignItems: 'start' }}>
       <div className="grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
-        <ChartCard title="Atividade geral" sub="Passos médios/dia · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />8%</span>}>
+        <ChartCard title="Atividade geral" sub="Passos médios/dia · 14 dias">
           <LineChart data={A.steps} color="var(--c-steps)" height={140} unit=" passos" />
         </ChartCard>
-        <ChartCard title="Calorias ativas" sub="Média da clínica · 14 dias" right={<span className="trend up"><Icon n="arrUp" size={13} />5%</span>}>
+        <ChartCard title="Calorias ativas" sub="Média da clínica · 14 dias">
           <BarChart data={A.calories} color="var(--c-cal)" height={140} unit=" kcal" />
         </ChartCard>
       </div>
@@ -243,7 +243,7 @@ export default function DashboardPage() {
     <ChartCard
       title="Sono médio da clínica"
       sub="Horas por noite · 14 dias"
-      right={<span className="badge neutral">{avgSleep}h média</span>}
+      right={avgSleep ? <span className="badge neutral">{avgSleep}h média</span> : undefined}
       legend={
         <div className="row gap16" style={{ marginTop: 8, fontSize: 11, color: 'var(--text-faint)' }}>
           <span className="row gap6"><span style={{ width: 14, height: 2, background: 'var(--c-sleep)', borderRadius: 2 }} />Realizado</span>
