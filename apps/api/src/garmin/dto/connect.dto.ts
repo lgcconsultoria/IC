@@ -1,10 +1,7 @@
-import { IsEmail, IsString, MinLength } from 'class-validator';
+import { IsString, MinLength } from 'class-validator';
 
 export class ConnectDto {
-  @IsEmail({}, { message: 'E-mail do Garmin inválido' })
-  email!: string;
-
   @IsString()
-  @MinLength(1, { message: 'Senha obrigatória' })
-  password!: string;
+  @MinLength(10, { message: 'Cole a URL/código MCP do Garmin (amalgama)' })
+  mcpUrl!: string;
 }

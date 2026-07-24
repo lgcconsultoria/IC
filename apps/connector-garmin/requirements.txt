@@ -1,6 +1,5 @@
-# Mesmas versões-núcleo do garmin_mcp (github.com/Taxuspt/garmin_mcp)
-garth>=0.5.17
-garminconnect==0.3.2
+# Cliente MCP (fala com a URL MCP do Garmin de cada paciente, via amalgama)
+mcp>=1.2.0
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
 pydantic>=2.9.0

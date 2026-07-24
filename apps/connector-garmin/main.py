@@ -1,15 +1,16 @@
 """
 Sidecar Garmin — API HTTP interna (FastAPI) consumida pelo backend NestJS.
 
-Não é exposta ao público: só o backend a acessa, na rede privada, com o header
-X-Connector-Secret. É stateless — recebe token/credenciais em cada chamada e
-nunca persiste nada em disco.
+Modelo atual: cada paciente tem uma URL MCP (gerada pelo amalgama após conectar
+o Garmin dele). O backend guarda essa URL e a envia aqui; o sidecar age como
+cliente MCP, puxa os dados e devolve normalizado. Sem login/senha do Garmin,
+sem bloqueio de IP.
+
+Não é exposta ao público: só o backend a acessa, com o header X-Connector-Secret.
 
 Endpoints:
   GET  /health
-  POST /login       { email, password }        -> { status: "ok"|"mfa_required", token?, mfa_ctx? }
-  POST /login/mfa   { mfa_ctx, code }           -> { status: "ok", token }
-  POST /sync        { token, since_date?, days? } -> { daily: [...], activities: [...] }
+  POST /sync   { mcp_url, since_date?, days? } -> { daily: [...], activities: [...] }
 """
 from __future__ import annotations
 
@@ -24,7 +25,7 @@ import garmin_client as gc
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("garmin_connector")
 
-app = FastAPI(title="IC Garmin Connector", version="1.0.0")
+app = FastAPI(title="IC Garmin Connector (MCP)", version="2.0.0")
 
 CONNECTOR_SECRET = os.environ.get("GARMIN_CONNECTOR_SECRET", "")
 
@@ -37,18 +38,8 @@ def require_secret(x_connector_secret: str | None = Header(default=None)) -> Non
         raise HTTPException(status_code=401, detail="segredo inválido")
 
 
-class LoginBody(BaseModel):
-    email: str
-    password: str
-
-
-class MfaBody(BaseModel):
-    mfa_ctx: str
-    code: str
-
-
 class SyncBody(BaseModel):
-    token: str
+    mcp_url: str
     since_date: str | None = None
     days: int = 3
 
@@ -58,42 +49,11 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
-def _err_detail(exc: Exception) -> str:
-    msg = (str(exc) or exc.__class__.__name__).strip()
-    return msg[:400]
-
-
-@app.post("/login", dependencies=[Depends(require_secret)])
-def login(body: LoginBody) -> dict[str, str]:
-    try:
-        token = gc.login(body.email, body.password)
-        return {"status": "ok", "token": token}
-    except gc.MfaRequired as mfa:
-        return {"status": "mfa_required", "mfa_ctx": mfa.mfa_ctx}
-    except Exception as exc:  # noqa: BLE001
-        detail = _err_detail(exc)
-        logger.warning("login falhou: %s", detail)
-        # 502 (não 401) + mensagem real: o Garmin pode recusar por captcha,
-        # verificação de novo dispositivo ou bloqueio de IP de datacenter —
-        # não necessariamente credencial inválida. Surfamos o motivo real.
-        raise HTTPException(status_code=502, detail=f"Falha no login Garmin: {detail}") from exc
-
-
-@app.post("/login/mfa", dependencies=[Depends(require_secret)])
-def login_mfa(body: MfaBody) -> dict[str, str]:
-    try:
-        token = gc.resume_mfa(body.mfa_ctx, body.code)
-        return {"status": "ok", "token": token}
-    except Exception as exc:  # noqa: BLE001
-        detail = _err_detail(exc)
-        logger.warning("mfa falhou: %s", detail)
-        raise HTTPException(status_code=502, detail=f"Falha na verificação MFA: {detail}") from exc
-
-
 @app.post("/sync", dependencies=[Depends(require_secret)])
-def sync(body: SyncBody) -> dict[str, object]:
+async def sync(body: SyncBody) -> dict[str, object]:
     try:
-        return gc.sync(body.token, body.since_date, body.days)
+        return await gc.sync(body.mcp_url, body.since_date, body.days)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("sync falhou: %s", exc)
-        raise HTTPException(status_code=502, detail="Falha ao coletar dados do Garmin") from exc
+        detail = (str(exc) or exc.__class__.__name__)[:400]
+        logger.warning("sync falhou: %s", detail)
+        raise HTTPException(status_code=502, detail=f"Falha ao coletar dados via MCP: {detail}") from exc

@@ -5,7 +5,6 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import type { AppUser } from '../auth/app-user';
 import { GarminService } from './garmin.service';
 import { ConnectDto } from './dto/connect.dto';
-import { MfaDto } from './dto/mfa.dto';
 
 @ApiTags('garmin')
 @ApiBearerAuth()
@@ -15,15 +14,9 @@ export class GarminController {
   constructor(private readonly garmin: GarminService) {}
 
   @Post('connect')
-  @ApiOperation({ summary: 'Conecta a conta Garmin do paciente (email/senha). Pode exigir MFA.' })
+  @ApiOperation({ summary: 'Conecta o Garmin do paciente via URL MCP (amalgama).' })
   connect(@CurrentUser() user: AppUser, @Body() dto: ConnectDto) {
-    return this.garmin.connect(user, dto.email, dto.password);
-  }
-
-  @Post('mfa')
-  @ApiOperation({ summary: 'Conclui a conexão Garmin informando o código MFA.' })
-  mfa(@CurrentUser() user: AppUser, @Body() dto: MfaDto) {
-    return this.garmin.submitMfa(user, dto.code);
+    return this.garmin.connect(user, dto.mcpUrl);
   }
 
   @Get('status')
@@ -41,7 +34,7 @@ export class GarminController {
   }
 
   @Delete('disconnect')
-  @ApiOperation({ summary: 'Desconecta o Garmin e remove os segredos do paciente.' })
+  @ApiOperation({ summary: 'Desconecta o Garmin e remove a URL MCP do paciente.' })
   disconnect(@CurrentUser() user: AppUser) {
     return this.garmin.disconnect(user);
   }
