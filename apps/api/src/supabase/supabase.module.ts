@@ -29,8 +29,24 @@ function createLazyAdminClient(): SupabaseClient {
     return real;
   };
 
+  // Props que o NestJS sonda em TODO provider durante o boot (thenable +
+  // hooks de ciclo de vida). Resolver o cliente nesses acessos forçaria as
+  // envs do Supabase já no boot, quebrando a inicialização quando elas ainda
+  // não estão setadas (ex.: primeiro deploy no host). Devolvendo undefined
+  // para essas sondagens, o cliente permanece de fato lazy — a resolução real
+  // só acontece no primeiro uso do banco.
+  const LIFECYCLE_PROBES = new Set([
+    'then',
+    'onModuleInit',
+    'onModuleDestroy',
+    'onApplicationBootstrap',
+    'beforeApplicationShutdown',
+    'onApplicationShutdown',
+  ]);
+
   return new Proxy({} as SupabaseClient, {
     get(_target, prop, receiver) {
+      if (typeof prop === 'string' && LIFECYCLE_PROBES.has(prop)) return undefined;
       const client = resolve();
       const value = Reflect.get(client, prop, receiver);
       return typeof value === 'function' ? value.bind(client) : value;

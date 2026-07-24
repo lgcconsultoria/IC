@@ -38,27 +38,45 @@ export class GarminPoller implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
-    this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
-    const connection = this.connection as unknown as ConnectionOptions;
+    try {
+      this.connection = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+      // Sem listener de 'error', um erro do ioredis derruba o processo. Aqui só
+      // registramos — a API deve subir mesmo com o Redis temporariamente fora.
+      this.connection.on('error', (err) =>
+        this.logger.warn(`Redis indisponível para o poller: ${err.message}`),
+      );
+      const connection = this.connection as unknown as ConnectionOptions;
 
-    this.queue = new Queue(QUEUE, { connection });
-    const intervalMs = Number(this.cfg.get('GARMIN_POLL_INTERVAL_MS') ?? 6 * 60 * 60 * 1000);
-    await this.queue.add(
-      REPEAT_JOB,
-      {},
-      {
-        repeat: { every: intervalMs },
-        jobId: 'garmin-poll-all',
-        removeOnComplete: true,
-        removeOnFail: 50,
-      },
-    );
+      this.queue = new Queue(QUEUE, { connection });
+      this.worker = new Worker(QUEUE, () => this.pollAll(), { connection });
+      this.worker.on('failed', (job, err) =>
+        this.logger.error(`Poll job ${job?.id} falhou: ${err.message}`),
+      );
 
-    this.worker = new Worker(QUEUE, () => this.pollAll(), { connection });
-    this.worker.on('failed', (job, err) =>
-      this.logger.error(`Poll job ${job?.id} falhou: ${err.message}`),
-    );
-    this.logger.log(`Poller Garmin ativo (intervalo ${Math.round(intervalMs / 60000)}min)`);
+      const intervalMs = Number(this.cfg.get('GARMIN_POLL_INTERVAL_MS') ?? 6 * 60 * 60 * 1000);
+      // NÃO aguardamos: agendar o job repetível depende do Redis; se ele estiver
+      // fora no boot, isso não pode travar/derrubar a inicialização da API.
+      void this.queue
+        .add(
+          REPEAT_JOB,
+          {},
+          {
+            repeat: { every: intervalMs },
+            jobId: 'garmin-poll-all',
+            removeOnComplete: true,
+            removeOnFail: 50,
+          },
+        )
+        .then(() =>
+          this.logger.log(`Poller Garmin ativo (intervalo ${Math.round(intervalMs / 60000)}min)`),
+        )
+        .catch((err) =>
+          this.logger.error(`Falha ao agendar o poll Garmin: ${err.message}`),
+        );
+    } catch (err) {
+      // Boot da API nunca deve falhar por causa do poller.
+      this.logger.error(`Não foi possível iniciar o poller Garmin: ${err}`);
+    }
   }
 
   private async pollAll(): Promise<void> {
