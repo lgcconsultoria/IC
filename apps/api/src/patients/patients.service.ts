@@ -38,14 +38,24 @@ export class PatientsService {
 
   async list(user: AppUser) {
     this.assertStaff(user);
-    const { data, error } = await this.db
+    const sel = 'id, nome:users(nome), user_id, objetivo, ativo, created_at';
+    // Exclui os registros de autoacompanhamento da equipe (eh_funcionario).
+    // Se a coluna ainda não existir (migration 0009), lista todos sem filtrar.
+    let res = await this.db
       .from('patients')
-      .select('id, nome:users(nome), user_id, objetivo, ativo, created_at')
+      .select(sel)
       .eq('clinic_id', user.clinicId)
-      .eq('eh_funcionario', false) // não lista os registros de autoacompanhamento da equipe
+      .eq('eh_funcionario', false)
       .order('created_at', { ascending: false });
-    if (error) throw new InternalServerErrorException(error.message);
-    return data;
+    if (res.error) {
+      res = await this.db
+        .from('patients')
+        .select(sel)
+        .eq('clinic_id', user.clinicId)
+        .order('created_at', { ascending: false });
+    }
+    if (res.error) throw new InternalServerErrorException(res.error.message);
+    return res.data;
   }
 
   async create(user: AppUser, dto: CreatePatientDto) {
@@ -122,7 +132,7 @@ export class PatientsService {
   async findMine(user: AppUser) {
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) throw new InternalServerErrorException(error.message);
@@ -137,35 +147,44 @@ export class PatientsService {
   async ensureSelfPatient(user: AppUser) {
     const { data: existing } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
       .eq('user_id', user.id)
       .maybeSingle();
     if (existing) return existing;
 
-    const { data, error } = await this.db
+    // eh_funcionario depende da migration 0009; tenta com o flag e, se a
+    // coluna ainda não existir, cai para o insert base (degrada com segurança).
+    const base = {
+      clinic_id: user.clinicId,
+      user_id: user.id,
+      objetivo: 'Autoacompanhamento',
+    };
+    let ins = await this.db
       .from('patients')
-      .insert({
-        clinic_id: user.clinicId,
-        user_id: user.id,
-        eh_funcionario: true,
-        objetivo: 'Autoacompanhamento',
-      })
-      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc, eh_funcionario')
+      .insert({ ...base, eh_funcionario: true })
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
       .single();
-    if (error || !data) {
+    if (ins.error) {
+      ins = await this.db
+        .from('patients')
+        .insert(base)
+        .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+        .single();
+    }
+    if (ins.error || !ins.data) {
       throw new InternalServerErrorException(
-        error?.message ?? 'Falha ao criar autoacompanhamento',
+        ins.error?.message ?? 'Falha ao criar autoacompanhamento',
       );
     }
-    return data;
+    return ins.data;
   }
 
   async findOne(user: AppUser, patientId: string) {
+    // Seleciona só colunas SEMPRE existentes — não depende das migrations
+    // 0008/0009. As colunas de metabolismo são lidas sob demanda em getMetabolism.
     const { data, error } = await this.db
       .from('patients')
-      .select(
-        'id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo, peso_kg, nivel_atividade, tmb_medido_kcal, tmb_medido_em',
-      )
+      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo')
       .eq('id', patientId)
       .single();
     if (error || !data) throw new NotFoundException('Paciente não encontrado');
@@ -296,9 +315,22 @@ export class PatientsService {
   async getMetabolism(user: AppUser, patientId: string) {
     const patient = await this.findOne(user, patientId); // valida acesso
 
+    // Colunas de metabolismo (migration 0008). Lidas à parte e de forma
+    // tolerante: se a migration ainda não foi aplicada, degrada para nulos.
+    const metaRes = await this.db
+      .from('patients')
+      .select('peso_kg, nivel_atividade, tmb_medido_kcal, tmb_medido_em')
+      .eq('id', patientId)
+      .maybeSingle();
+    const ex = (metaRes.error ? {} : metaRes.data ?? {}) as {
+      peso_kg?: number | null;
+      nivel_atividade?: NivelAtividade | null;
+      tmb_medido_kcal?: number | null;
+      tmb_medido_em?: string | null;
+    };
+
     // peso: prioriza patients.peso_kg; senão a última medição
-    let pesoKg: number | null =
-      (patient as { peso_kg?: number | null }).peso_kg ?? null;
+    let pesoKg: number | null = ex.peso_kg ?? null;
     if (pesoKg == null) {
       const { data: m } = await this.db
         .from('measurements')
@@ -311,13 +343,10 @@ export class PatientsService {
       pesoKg = m?.peso_kg ?? null;
     }
 
-    const nivel =
-      ((patient as { nivel_atividade?: NivelAtividade | null }).nivel_atividade ??
-        null) || NIVEL_ATIVIDADE_PADRAO;
+    const nivel = (ex.nivel_atividade ?? null) || NIVEL_ATIVIDADE_PADRAO;
     const fator = FATOR_ATIVIDADE[nivel] ?? FATOR_ATIVIDADE[NIVEL_ATIVIDADE_PADRAO];
     const idade = this.idadeDe(patient.data_nasc);
-    const tmbMedido =
-      (patient as { tmb_medido_kcal?: number | null }).tmb_medido_kcal ?? null;
+    const tmbMedido = ex.tmb_medido_kcal ?? null;
 
     const tmbCalculado = this.mifflinStJeor(
       patient.sexo,
@@ -362,8 +391,7 @@ export class PatientsService {
       fator_atividade: fator,
       tmb_calculado: tmbCalculado,
       tmb_medido_kcal: tmbMedido,
-      tmb_medido_em:
-        (patient as { tmb_medido_em?: string | null }).tmb_medido_em ?? null,
+      tmb_medido_em: ex.tmb_medido_em ?? null,
       tmb: tmb, // valor efetivamente usado (medido ou calculado)
       tmb_fonte: tmbMedido != null ? 'medido' : tmbCalculado != null ? 'calculado' : null,
       tdee,
@@ -456,36 +484,48 @@ export class PatientsService {
     // pesos do score (documentados na resposta para transparência)
     const PESO = { perdaPeso: 10, ganhoMassaMagra: 15, pontuacaoInbody: 1 };
 
-    let q = this.db
-      .from('patients')
-      .select('id, sexo, eh_funcionario, nome:users(nome)')
-      .eq('clinic_id', user.clinicId)
-      .eq('ativo', true);
-
     const incluiPac = opts.publicos.includes('pacientes');
     const incluiFunc = opts.publicos.includes('funcionarios');
-    if (incluiPac && !incluiFunc) q = q.eq('eh_funcionario', false);
-    else if (!incluiPac && incluiFunc) q = q.eq('eh_funcionario', true);
-    // ambos → sem filtro; nenhum → também sem filtro (default = todos)
+    type Row = { id: string; sexo: string | null; eh_funcionario: boolean; nome: { nome: string } | { nome: string }[] | null };
 
-    if (opts.generos.length > 0 && opts.generos.length < 3) {
-      q = q.in('sexo', opts.generos);
+    // Tenta com eh_funcionario (migration 0009). Se a coluna não existir,
+    // cai para a consulta base tratando todos como não-funcionários.
+    let rows: Row[];
+    {
+      let q = this.db
+        .from('patients')
+        .select('id, sexo, eh_funcionario, nome:users(nome)')
+        .eq('clinic_id', user.clinicId)
+        .eq('ativo', true);
+      if (incluiPac && !incluiFunc) q = q.eq('eh_funcionario', false);
+      else if (!incluiPac && incluiFunc) q = q.eq('eh_funcionario', true);
+      if (opts.generos.length > 0 && opts.generos.length < 3) q = q.in('sexo', opts.generos);
+      const res = await q;
+      if (res.error) {
+        // fallback sem eh_funcionario
+        if (incluiFunc && !incluiPac) {
+          rows = []; // não há como identificar funcionários sem a coluna
+        } else {
+          let q2 = this.db
+            .from('patients')
+            .select('id, sexo, nome:users(nome)')
+            .eq('clinic_id', user.clinicId)
+            .eq('ativo', true);
+          if (opts.generos.length > 0 && opts.generos.length < 3) q2 = q2.in('sexo', opts.generos);
+          const res2 = await q2;
+          if (res2.error) throw new InternalServerErrorException(res2.error.message);
+          rows = ((res2.data ?? []) as Omit<Row, 'eh_funcionario'>[]).map((r) => ({ ...r, eh_funcionario: false }));
+        }
+      } else {
+        rows = (res.data ?? []) as Row[];
+      }
     }
-
-    const { data: pacientes, error } = await q;
-    if (error) throw new InternalServerErrorException(error.message);
-    const rows = (pacientes ?? []) as Array<{
-      id: string;
-      sexo: string | null;
-      eh_funcionario: boolean;
-      nome: { nome: string } | { nome: string }[] | null;
-    }>;
     if (rows.length === 0) {
       return { pesos: PESO, from: opts.from, to: opts.to, itens: [] };
     }
     const ids = rows.map((r) => r.id);
 
-    const [{ data: meds }, { data: bio }] = await Promise.all([
+    const [medsRes, bioRes] = await Promise.all([
       this.db
         .from('measurements')
         .select('patient_id, data, peso_kg')
@@ -494,6 +534,7 @@ export class PatientsService {
         .lte('data', opts.to)
         .not('peso_kg', 'is', null)
         .order('data', { ascending: true }),
+      // body_composition depende da migration 0008 — tolera ausência
       this.db
         .from('body_composition')
         .select('patient_id, data_exame, massa_magra_kg, pontuacao')
@@ -502,6 +543,8 @@ export class PatientsService {
         .lte('data_exame', opts.to)
         .order('data_exame', { ascending: true }),
     ]);
+    const meds = medsRes.data;
+    const bio = bioRes.error ? [] : bioRes.data;
 
     // primeiro/último valor por paciente
     const firstLast = <T>(arr: T[], val: (t: T) => number | null) => {
