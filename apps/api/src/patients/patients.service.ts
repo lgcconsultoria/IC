@@ -12,6 +12,17 @@ import { AppUser, isStaff } from '../auth/app-user';
 import type { CreatePatientDto } from './dto/create-patient.dto';
 import type { CreateMeasurementDto } from './dto/create-measurement.dto';
 import type { UpdateGoalsDto } from './dto/update-goals.dto';
+import type { NivelAtividade, UpdateMetabolismDto } from './dto/update-metabolism.dto';
+
+/** Fatores de atividade física (multiplicador da TMB para chegar ao TDEE). */
+const FATOR_ATIVIDADE: Record<NivelAtividade, number> = {
+  sedentario: 1.2,
+  leve: 1.375,
+  moderado: 1.55,
+  intenso: 1.725,
+  muito_intenso: 1.9,
+};
+const NIVEL_ATIVIDADE_PADRAO: NivelAtividade = 'moderado';
 
 /**
  * Regras de acesso aplicadas em código (o client admin faz bypass de RLS):
@@ -116,7 +127,9 @@ export class PatientsService {
   async findOne(user: AppUser, patientId: string) {
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo')
+      .select(
+        'id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo, peso_kg, nivel_atividade, tmb_medido_kcal, tmb_medido_em',
+      )
       .eq('id', patientId)
       .single();
     if (error || !data) throw new NotFoundException('Paciente não encontrado');
@@ -233,6 +246,157 @@ export class PatientsService {
       .single();
     if (error) throw new InternalServerErrorException(error.message);
     return data;
+  }
+
+  // ----- Metabolismo (TMB / TDEE / balanço calórico) -----
+
+  /**
+   * Perfil metabólico completo do paciente:
+   *   - TMB calculada (Mifflin-St Jeor) a partir de sexo/idade/altura/peso;
+   *   - TMB medida (calorimetria/InBody digitada pela clínica) substitui a calculada;
+   *   - TDEE = TMB × fator de atividade;
+   *   - balanço do dia = consumido (diário alimentar) − gasto (wearable ou TDEE).
+   */
+  async getMetabolism(user: AppUser, patientId: string) {
+    const patient = await this.findOne(user, patientId); // valida acesso
+
+    // peso: prioriza patients.peso_kg; senão a última medição
+    let pesoKg: number | null =
+      (patient as { peso_kg?: number | null }).peso_kg ?? null;
+    if (pesoKg == null) {
+      const { data: m } = await this.db
+        .from('measurements')
+        .select('peso_kg')
+        .eq('patient_id', patientId)
+        .not('peso_kg', 'is', null)
+        .order('data', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      pesoKg = m?.peso_kg ?? null;
+    }
+
+    const nivel =
+      ((patient as { nivel_atividade?: NivelAtividade | null }).nivel_atividade ??
+        null) || NIVEL_ATIVIDADE_PADRAO;
+    const fator = FATOR_ATIVIDADE[nivel] ?? FATOR_ATIVIDADE[NIVEL_ATIVIDADE_PADRAO];
+    const idade = this.idadeDe(patient.data_nasc);
+    const tmbMedido =
+      (patient as { tmb_medido_kcal?: number | null }).tmb_medido_kcal ?? null;
+
+    const tmbCalculado = this.mifflinStJeor(
+      patient.sexo,
+      pesoKg,
+      patient.altura_cm,
+      idade,
+    );
+    // a calorimetria medida é a fonte mais fiel; senão usa a fórmula
+    const tmb = tmbMedido ?? tmbCalculado;
+    const tdee = tmb != null ? Math.round(tmb * fator) : null;
+
+    // gasto real do dia (wearable) tem prioridade sobre o TDEE estimado
+    const hoje = new Date().toISOString().slice(0, 10);
+    const { data: wd } = await this.db
+      .from('wearable_daily')
+      .select('kcal_gastas')
+      .eq('patient_id', patientId)
+      .eq('data', hoje)
+      .maybeSingle();
+    const gastoWearable = wd?.kcal_gastas ?? null;
+    const gastoDia = gastoWearable ?? tdee;
+
+    // consumido hoje (diário alimentar)
+    const { data: logs } = await this.db
+      .from('food_logs')
+      .select('kcal_estimada')
+      .eq('patient_id', patientId)
+      .eq('data', hoje);
+    const consumidoHoje = (logs ?? []).reduce(
+      (acc, r) => acc + (Number(r.kcal_estimada) || 0),
+      0,
+    );
+
+    const saldo = gastoDia != null ? consumidoHoje - gastoDia : null; // <0 déficit, >0 superávit
+
+    return {
+      sexo: patient.sexo ?? null,
+      idade,
+      altura_cm: patient.altura_cm ?? null,
+      peso_kg: pesoKg,
+      nivel_atividade: nivel,
+      fator_atividade: fator,
+      tmb_calculado: tmbCalculado,
+      tmb_medido_kcal: tmbMedido,
+      tmb_medido_em:
+        (patient as { tmb_medido_em?: string | null }).tmb_medido_em ?? null,
+      tmb: tmb, // valor efetivamente usado (medido ou calculado)
+      tmb_fonte: tmbMedido != null ? 'medido' : tmbCalculado != null ? 'calculado' : null,
+      tdee,
+      consumido_hoje: consumidoHoje,
+      gasto_hoje: gastoDia,
+      gasto_fonte: gastoWearable != null ? 'wearable' : gastoDia != null ? 'tdee' : null,
+      saldo_hoje: saldo,
+      balanco: saldo == null ? null : saldo < 0 ? 'deficit' : saldo > 0 ? 'superavit' : 'neutro',
+    };
+  }
+
+  /**
+   * Atualiza o perfil metabólico. Paciente pode ajustar o próprio peso e nível
+   * de atividade; a TMB medida (calorimetria) só a equipe da clínica define.
+   */
+  async updateMetabolism(
+    user: AppUser,
+    patientId: string,
+    dto: UpdateMetabolismDto,
+  ) {
+    await this.findOne(user, patientId); // valida acesso
+    const staff = isStaff(user);
+
+    const patch: Record<string, unknown> = {};
+    if (dto.pesoKg !== undefined) patch.peso_kg = dto.pesoKg;
+    if (dto.nivelAtividade !== undefined) patch.nivel_atividade = dto.nivelAtividade;
+    if (dto.tmbMedidoKcal !== undefined) {
+      if (!staff) {
+        throw new ForbiddenException(
+          'Somente a equipe da clínica registra a calorimetria (gasto em repouso medido)',
+        );
+      }
+      patch.tmb_medido_kcal = dto.tmbMedidoKcal;
+      patch.tmb_medido_por = user.id;
+      patch.tmb_medido_em = new Date().toISOString();
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const { error } = await this.db
+        .from('patients')
+        .update(patch)
+        .eq('id', patientId);
+      if (error) throw new InternalServerErrorException(error.message);
+    }
+    return this.getMetabolism(user, patientId);
+  }
+
+  /** TMB pela equação de Mifflin-St Jeor (kcal/dia). null se faltar dado. */
+  private mifflinStJeor(
+    sexo: string | null,
+    pesoKg: number | null,
+    alturaCm: number | null,
+    idade: number | null,
+  ): number | null {
+    if (!pesoKg || !alturaCm || idade == null || !sexo) return null;
+    const base = 10 * pesoKg + 6.25 * alturaCm - 5 * idade;
+    const ajuste = sexo === 'M' ? 5 : sexo === 'F' ? -161 : -78; // 'outro' ~ média
+    return Math.round(base + ajuste);
+  }
+
+  private idadeDe(dataNasc: string | null): number | null {
+    if (!dataNasc) return null;
+    const nasc = new Date(dataNasc);
+    if (Number.isNaN(nasc.getTime())) return null;
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    const m = hoje.getMonth() - nasc.getMonth();
+    if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
+    return idade;
   }
 
   // ----- helpers -----

@@ -14,6 +14,7 @@ import {
   type WearableDailyRow,
   type WearableActivityRow,
 } from '@/lib/patient-source';
+import { loadMetabolism, type Metabolism } from '@/lib/nutrition-source';
 
 type ConnStatus = 'pending' | 'active' | 'reauth_required' | 'disconnected' | 'error';
 interface Series { date: string; day: number; value: number }
@@ -52,14 +53,17 @@ export default function PatientDashboard() {
   const [acts, setActs] = useState<WearableActivityRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [pid, setPid] = useState<string | null>(null);
+  const [met, setMet] = useState<Metabolism | null>(null);
 
   async function loadData(id: string) {
-    const [d, a] = await Promise.all([
+    const [d, a, m] = await Promise.all([
       loadPatientWearables(id, 180),
       loadPatientActivities(id, 180),
+      loadMetabolism(id),
     ]);
     setDaily(d);
     setActs(a);
+    setMet(m);
   }
 
   useEffect(() => {
@@ -193,6 +197,8 @@ export default function PatientDashboard() {
           </div>
         )}
 
+        {met && met.tmb != null && <MetabolismCard met={met} onRegistrar={() => router.push('/portal/refeicao')} />}
+
         {loading ? (
           <div style={{ display: 'grid', placeItems: 'center', padding: 60 }}><span className="spin" style={{ width: 30, height: 30, border: '3px solid var(--accent)', borderTopColor: 'transparent', borderRadius: '50%' }} /></div>
         ) : !hasData ? (
@@ -274,6 +280,57 @@ export default function PatientDashboard() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+function MetabolismCard({ met, onRegistrar }: { met: Metabolism; onRegistrar: () => void }) {
+  const saldo = met.saldo_hoje;
+  const emDeficit = met.balanco === 'deficit';
+  const emSuperavit = met.balanco === 'superavit';
+  const tone = emDeficit ? 'var(--good)' : emSuperavit ? 'var(--warn, #e8843c)' : 'var(--text)';
+  const restante = met.gasto_hoje != null ? met.gasto_hoje - met.consumido_hoje : null;
+  return (
+    <div className="card" style={{ padding: 18, marginBottom: 20 }}>
+      <div className="between" style={{ marginBottom: 14, flexWrap: 'wrap', gap: 8 }}>
+        <div className="row gap8">
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--accent-soft)', display: 'grid', placeItems: 'center' }}><Icon n="flame" size={17} style={{ color: 'var(--accent)' }} /></div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 14 }}>Meu balanço de hoje</div>
+            <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>
+              {met.tmb_fonte === 'medido' ? 'Metabolismo medido pela clínica' : 'Metabolismo estimado (Mifflin-St Jeor)'}
+            </div>
+          </div>
+        </div>
+        <button className="btn ghost sm" onClick={onRegistrar}><Icon n="flame" size={14} />Registrar refeição</button>
+      </div>
+      <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 12 }}>
+        <MetMini label="Metabolismo basal" value={met.tmb != null ? fmt(met.tmb) : '—'} unit=" kcal" />
+        <MetMini label="Gasto total (TDEE)" value={met.tdee != null ? fmt(met.tdee) : '—'} unit=" kcal" />
+        <MetMini label="Consumido hoje" value={fmt(met.consumido_hoje)} unit=" kcal" />
+        <MetMini
+          label={emSuperavit ? 'Acima do gasto' : 'Déficit de hoje'}
+          value={saldo != null ? (saldo > 0 ? '+' : '') + fmt(saldo) : '—'}
+          unit=" kcal"
+          color={tone}
+        />
+      </div>
+      {restante != null && (
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 12 }}>
+          {restante > 0
+            ? <>Você ainda pode consumir <b className="tnum" style={{ color: 'var(--good)' }}>{fmt(restante)} kcal</b> hoje para manter o déficit.</>
+            : <>Você já passou <b className="tnum" style={{ color: 'var(--warn, #e8843c)' }}>{fmt(-restante)} kcal</b> do seu gasto de hoje.</>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MetMini({ label, value, unit = '', color }: { label: string; value: string; unit?: string; color?: string }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: 'var(--text-faint)', marginBottom: 3 }}>{label}</div>
+      <div className="tnum" style={{ fontSize: 20, fontWeight: 800, color: color ?? 'var(--text)' }}>{value}<span style={{ fontSize: 11, color: 'var(--text-faint)', fontWeight: 600 }}>{unit}</span></div>
     </div>
   );
 }

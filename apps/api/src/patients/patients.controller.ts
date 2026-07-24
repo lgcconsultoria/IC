@@ -16,6 +16,7 @@ import { PatientsService } from './patients.service';
 import { CreatePatientDto } from './dto/create-patient.dto';
 import { CreateMeasurementDto } from './dto/create-measurement.dto';
 import { UpdateGoalsDto } from './dto/update-goals.dto';
+import { UpdateMetabolismDto } from './dto/update-metabolism.dto';
 
 @ApiTags('patients')
 @ApiBearerAuth()
@@ -92,5 +93,19 @@ export class PatientsController {
     @Body() dto: UpdateGoalsDto,
   ) {
     return this.patients.saveGoals(user, id, dto);
+  }
+
+  @Get(':id/metabolism')
+  getMetabolism(@CurrentUser() user: AppUser, @Param('id') id: string) {
+    return this.patients.getMetabolism(user, id);
+  }
+
+  @Put(':id/metabolism')
+  updateMetabolism(
+    @CurrentUser() user: AppUser,
+    @Param('id') id: string,
+    @Body() dto: UpdateMetabolismDto,
+  ) {
+    return this.patients.updateMetabolism(user, id, dto);
   }
 }
