@@ -162,17 +162,29 @@ export async function saveMetabolism(
   }
 }
 
-/** Envia a foto (base64) para a IA estimar alimentos e calorias. */
+/** Envia a foto (base64) para a IA estimar alimentos e calorias.
+ *  Lança em caso de erro (com o motivo real) para o chamador exibir. */
 export async function analyzeMealPhoto(
   imageBase64: string,
   mediaType: string,
-): Promise<MealEstimate | null> {
-  try {
-    return await apiFetch<MealEstimate>('/nutrition/analyze-photo', {
-      method: 'POST',
-      body: JSON.stringify({ imageBase64, mediaType }),
-    });
-  } catch {
-    return null;
+): Promise<MealEstimate> {
+  return apiFetch<MealEstimate>('/nutrition/analyze-photo', {
+    method: 'POST',
+    body: JSON.stringify({ imageBase64, mediaType }),
+  });
+}
+
+/** Extrai uma mensagem legível do erro da API (statusCode/message/detail). */
+export function readableApiError(err: unknown): string | null {
+  if (!(err instanceof Error)) return null;
+  const m = err.message.match(/\{[\s\S]*\}/);
+  if (m) {
+    try {
+      const body = JSON.parse(m[0]) as { message?: string | string[]; detail?: string };
+      const msg = Array.isArray(body.message) ? body.message[0] : body.message;
+      if (msg) return msg;
+      if (body.detail) return body.detail;
+    } catch { /* ignore */ }
   }
+  return err.message.replace(/^API \d+:\s*/, '') || null;
 }

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { getSupabase } from '@/lib/supabase';
+import { homeRoute } from '@/lib/auth-route';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,8 @@ export default function LoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email, password: senha });
       if (error) throw error;
-      router.push('/clinica');
+      // roteia pelo papel: paciente vai direto ao painel dele, nunca à clínica
+      router.replace(await homeRoute('/clinica'));
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Falha no login');
     } finally {

@@ -36,7 +36,8 @@ export default function ConnectGarminPage() {
       try {
         const s = await apiFetch<{ status: ConnStatus; lastSyncAt: string | null; lastError: string | null }>('/garmin/status');
         setConn(s);
-        if (s.status === 'active') setStep('done');
+        // Já conectado → pula a tela de conexão e vai direto ao painel.
+        if (s.status === 'active') { router.replace('/portal/painel'); return; }
       } catch {
         /* sem status ainda */
       }

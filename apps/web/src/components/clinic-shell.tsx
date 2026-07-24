@@ -159,19 +159,22 @@ export function ClinicShell({ children }: { children: ReactNode }) {
         );
       }
     });
-    // Load profile name/role from API if available
-    import('@/lib/api').then(({ apiFetch }) =>
-      apiFetch<{ nome: string; role: string }>('/users/me')
-        .then((p) => {
-          // Paciente NÃO acessa a área da clínica — vai para o painel dele.
-          if (p.role === 'paciente') { router.replace('/portal/painel'); return; }
-          setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role);
-        })
-        .catch(() => {
-          getSupabase().auth.getUser().then(({ data }) => {
-            if (data.user?.email) setUserName(data.user.email.split('@')[0]);
-          });
-        })
+    // Guarda de acesso: SÓ equipe entra na área da clínica. Qualquer não-equipe
+    // (paciente) é mandado para o painel do paciente. Papel resolvido de forma
+    // robusta (API → fallback direto no Supabase) para não vazar por falha da API.
+    import('@/lib/auth-route').then(({ fetchRole, isStaffRole }) =>
+      fetchRole().then((role) => {
+        if (role && !isStaffRole(role)) { router.replace('/portal/painel'); return; }
+        import('@/lib/api').then(({ apiFetch }) =>
+          apiFetch<{ nome: string; role: string }>('/users/me')
+            .then((p) => { setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role); })
+            .catch(() => {
+              getSupabase().auth.getUser().then(({ data }) => {
+                if (data.user?.email) setUserName(data.user.email.split('@')[0]);
+              });
+            })
+        );
+      })
     );
   }, [router]);
 

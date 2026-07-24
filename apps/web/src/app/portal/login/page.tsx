@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { DeviceBadge } from '@/components/ui';
 import { getSupabase } from '@/lib/supabase';
+import { homeRoute } from '@/lib/auth-route';
 
 export default function PatientLoginPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function PatientLoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email, password: pw });
       if (error) throw error;
-      router.push('/portal/painel');
+      router.replace(await homeRoute('/portal/painel'));
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Falha no login');
     } finally {

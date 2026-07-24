@@ -15,9 +15,11 @@ export default function Home() {
       const { data: { user } } = await getSupabase().auth.getUser();
       if (!user) { setChecking(false); return; }
       try {
-        const { apiFetch } = await import('@/lib/api');
-        const me = await apiFetch<{ role: string }>('/users/me');
-        router.replace(me.role === 'paciente' ? '/portal/painel' : '/clinica');
+        const { fetchRole, isStaffRole } = await import('@/lib/auth-route');
+        const role = await fetchRole();
+        if (role === 'paciente') { router.replace('/portal/painel'); return; }
+        if (isStaffRole(role)) { router.replace('/clinica'); return; }
+        setChecking(false);
       } catch {
         setChecking(false);
       }
