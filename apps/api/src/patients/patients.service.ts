@@ -38,7 +38,9 @@ export class PatientsService {
 
   async list(user: AppUser) {
     this.assertStaff(user);
-    const sel = 'id, nome:users(nome), user_id, objetivo, ativo, created_at';
+    // users!user_id desambigua o embed: patients tem 2 FKs p/ users
+    // (user_id e tmb_medido_por, add na migration 0008).
+    const sel = 'id, nome:users!user_id(nome), user_id, objetivo, ativo, created_at';
     // Exclui os registros de autoacompanhamento da equipe (eh_funcionario).
     // Se a coluna ainda não existir (migration 0009), lista todos sem filtrar.
     let res = await this.db
@@ -494,7 +496,7 @@ export class PatientsService {
     {
       let q = this.db
         .from('patients')
-        .select('id, sexo, eh_funcionario, nome:users(nome)')
+        .select('id, sexo, eh_funcionario, nome:users!user_id(nome)')
         .eq('clinic_id', user.clinicId)
         .eq('ativo', true);
       if (incluiPac && !incluiFunc) q = q.eq('eh_funcionario', false);
@@ -508,7 +510,7 @@ export class PatientsService {
         } else {
           let q2 = this.db
             .from('patients')
-            .select('id, sexo, nome:users(nome)')
+            .select('id, sexo, nome:users!user_id(nome)')
             .eq('clinic_id', user.clinicId)
             .eq('ativo', true);
           if (opts.generos.length > 0 && opts.generos.length < 3) q2 = q2.in('sexo', opts.generos);

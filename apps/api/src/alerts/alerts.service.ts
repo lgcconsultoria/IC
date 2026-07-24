@@ -40,7 +40,7 @@ export class AlertsService {
     const ids = [...new Set(alerts.map((a) => a.patient_id as string))];
     const { data: pats } = await this.db
       .from('patients')
-      .select('id, nome:users(nome)')
+      .select('id, nome:users!user_id(nome)')
       .in('id', ids);
     const nameById = new Map<string, string>();
     (pats ?? []).forEach((p) => {
