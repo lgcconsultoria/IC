@@ -174,7 +174,13 @@ export class GarminService {
   ): Promise<{ error: string | null }> {
     let error: string | null = null;
     if (result.daily?.length) {
-      const rows = result.daily.map((d) => ({ patient_id: patientId, ...d }));
+      // dedup por chave de conflito (data,fonte): o Postgres rejeita 2 linhas
+      // com a mesma chave num único upsert. Mantém a última ocorrência.
+      const byKey = new Map<string, Record<string, unknown>>();
+      for (const d of result.daily) {
+        byKey.set(`${d.data}|${d.fonte ?? 'garmin'}`, { patient_id: patientId, ...d });
+      }
+      const rows = [...byKey.values()];
       const { error: e } = await this.db
         .from('wearable_daily')
         .upsert(rows, { onConflict: 'patient_id,data,fonte' });
@@ -184,7 +190,12 @@ export class GarminService {
       }
     }
     if (result.activities?.length) {
-      const acts = result.activities.map((a) => ({ patient_id: patientId, ...a }));
+      // dedup por chave de conflito (inicio,tipo) para não estourar o ON CONFLICT.
+      const byKey = new Map<string, Record<string, unknown>>();
+      for (const a of result.activities) {
+        byKey.set(`${a.inicio}|${a.tipo ?? ''}`, { patient_id: patientId, ...a });
+      }
+      const acts = [...byKey.values()];
       const { error: e } = await this.db
         .from('wearable_activities')
         .upsert(acts, { onConflict: 'patient_id,inicio,tipo' });
