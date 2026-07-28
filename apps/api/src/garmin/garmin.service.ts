@@ -144,10 +144,18 @@ export class GarminService {
       return;
     }
 
-    await this.persist(patientId, result);
+    const persisted = await this.persist(patientId, result);
+    const recebidos = (result.activities?.length ?? 0) + (result.daily?.length ?? 0);
+    // Se o conector trouxe dados mas a gravação falhou, isso agora fica visível.
+    // Se não veio nada, registramos "0 registros" para diagnóstico (não é erro).
+    const nota =
+      persisted.error ??
+      (recebidos === 0
+        ? 'Sincronizou, porém a conta Garmin conectada não retornou treinos nem dados diários.'
+        : null);
     await this.setStatus(patientId, 'active', {
       last_sync_at: new Date().toISOString(),
-      last_error: null,
+      last_error: nota ? nota.slice(0, 300) : null,
     });
   }
 
@@ -160,21 +168,32 @@ export class GarminService {
     return (data ?? []).map((r) => r.patient_id as string);
   }
 
-  private async persist(patientId: string, result: SyncResult): Promise<void> {
+  private async persist(
+    patientId: string,
+    result: SyncResult,
+  ): Promise<{ error: string | null }> {
+    let error: string | null = null;
     if (result.daily?.length) {
       const rows = result.daily.map((d) => ({ patient_id: patientId, ...d }));
-      const { error } = await this.db
+      const { error: e } = await this.db
         .from('wearable_daily')
         .upsert(rows, { onConflict: 'patient_id,data,fonte' });
-      if (error) this.logger.error(`upsert wearable_daily: ${error.message}`);
+      if (e) {
+        this.logger.error(`upsert wearable_daily: ${e.message}`);
+        error = `daily: ${e.message}`;
+      }
     }
     if (result.activities?.length) {
       const acts = result.activities.map((a) => ({ patient_id: patientId, ...a }));
-      const { error } = await this.db
+      const { error: e } = await this.db
         .from('wearable_activities')
         .upsert(acts, { onConflict: 'patient_id,inicio,tipo' });
-      if (error) this.logger.error(`upsert wearable_activities: ${error.message}`);
+      if (e) {
+        this.logger.error(`upsert wearable_activities: ${e.message}`);
+        error = error ? `${error}; activities: ${e.message}` : `activities: ${e.message}`;
+      }
     }
+    return { error };
   }
 
   // ---- Persistência auxiliar --------------------------------------------- //
