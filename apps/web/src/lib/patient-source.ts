@@ -1,9 +1,7 @@
-/* IC Clínica — Fonte de pacientes: tenta a API real, cai para demo. */
+/* IC Clínica — Fonte de pacientes: apenas dados reais da API (sem demo). */
 import { apiFetch } from './api';
 import {
-  DATA,
   synthPatient,
-  byId,
   type Patient,
   type ApiPatientLike,
   type SeriesPoint,
@@ -34,41 +32,60 @@ function toApiLike(row: ApiPatientRow): ApiPatientLike {
   return { id: row.id, name: nomeDe(row), objetivo: row.objetivo };
 }
 
-/** Lista de pacientes para o painel: API real quando disponível, senão demo. */
+/** Lista de pacientes reais da clínica (da API). NUNCA usa dados fictícios. */
 export async function loadClinicPatients(): Promise<PatientsResult> {
   try {
     const rows = await apiFetch<ApiPatientRow[]>('/patients');
-    if (Array.isArray(rows) && rows.length > 0) {
+    if (Array.isArray(rows)) {
       return { patients: rows.map((r) => synthPatient(toApiLike(r))), source: 'api' };
     }
   } catch {
-    /* sem sessão / API indisponível / DB vazio → demo */
+    /* API indisponível → lista vazia (a UI mostra o estado "sem pacientes"). */
   }
-  return { patients: DATA.patients, source: 'demo' };
+  return { patients: [], source: 'api' };
 }
 
-/** Um paciente pelo id: demo (p1..p15) ou busca na API e sintetiza o view-model. */
+function ageFrom(dataNasc: string | null | undefined): number | null {
+  if (!dataNasc) return null;
+  const n = new Date(dataNasc);
+  if (Number.isNaN(n.getTime())) return null;
+  const t = new Date();
+  let a = t.getFullYear() - n.getFullYear();
+  const m = t.getMonth() - n.getMonth();
+  if (m < 0 || (m === 0 && t.getDate() < n.getDate())) a--;
+  return a;
+}
+
+/** Um paciente pelo id — identidade real (nome/idade/sexo/altura) + peso real
+ *  (da nutrição/metabolismo). Séries de wearable ficam vazias até virem reais. */
 export async function loadPatient(id: string): Promise<Patient | null> {
-  const demo = byId(id);
-  if (demo) return demo;
   try {
-    const row = await apiFetch<ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null }>(`/patients/${id}`);
-    if (row && row.id) {
-      return synthPatient({
-        id: row.id,
-        name: nomeDe(row),
-        objetivo: row.objetivo,
-        sexo: row.sexo ?? null,
-        alturaCm: row.altura_cm ?? null,
-      });
+    const row = await apiFetch<
+      ApiPatientRow & { altura_cm?: number | null; sexo?: 'F' | 'M' | 'outro' | null; data_nasc?: string | null }
+    >(`/patients/${id}`);
+    if (!row || !row.id) return null;
+    const p = synthPatient({
+      id: row.id,
+      name: nomeDe(row),
+      objetivo: row.objetivo,
+      sexo: row.sexo ?? null,
+      alturaCm: row.altura_cm ?? null,
+      age: ageFrom(row.data_nasc),
+    });
+    // Peso canônico = o da nutrição/metabolismo (o mesmo que a nutri digita).
+    try {
+      const met = await apiFetch<{ peso_kg: number | null; tmb?: number | null }>(`/patients/${id}/metabolism`);
+      if (met?.peso_kg != null) p.weight = met.peso_kg;
+    } catch {
+      /* metabolismo pode não existir ainda */
     }
+    return p;
   } catch {
-    /* ignore */
+    return null;
   }
-  return null;
 }
 
-// ----- Wearables reais (ROOK) -------------------------------------------------
+// ----- Wearables reais (Garmin) -----------------------------------------------
 
 export interface WearableDailyRow {
   data: string;
@@ -89,6 +106,46 @@ export async function loadPatientWearables(
   try {
     const rows = await apiFetch<WearableDailyRow[]>(
       `/patients/${id}/wearable-daily?days=${days}`,
+    );
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Dados do próprio paciente logado (id do registro em patients). */
+export interface MeRow {
+  id: string;
+  objetivo?: string | null;
+}
+export async function loadMe(): Promise<MeRow | null> {
+  try {
+    const row = await apiFetch<MeRow>('/patients/me');
+    return row && row.id ? row : null;
+  } catch {
+    return null;
+  }
+}
+
+export interface WearableActivityRow {
+  id: string;
+  inicio: string;
+  fim: string | null;
+  tipo: string;
+  kcal: number | null;
+  fc_media: number | null;
+  fc_max: number | null;
+  distancia_m: number | null;
+}
+
+/** Atividades/treinos reais do paciente; [] se não houver/indisponível. */
+export async function loadPatientActivities(
+  id: string,
+  days = 180,
+): Promise<WearableActivityRow[]> {
+  try {
+    const rows = await apiFetch<WearableActivityRow[]>(
+      `/patients/${id}/wearable-activities?days=${days}`,
     );
     return Array.isArray(rows) ? rows : [];
   } catch {

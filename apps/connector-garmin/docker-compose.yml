@@ -1,0 +1,38 @@
+# Stack do Portainer para rodar o sidecar Garmin numa máquina de IP residencial/
+# empresarial (fora de datacenter) — evita o bloqueio Cloudflare 1006 do Garmin.
+#
+# Deploy no Portainer → Stacks → Add stack → método "Repository":
+#   Repository URL:  https://github.com/lgcconsultoria/IC
+#   Reference:       refs/heads/claude/saas-clinica-garmin-mcp-szjkbu
+#   Compose path:    apps/connector-garmin/docker-compose.yml
+#
+# Em "Environment variables" da Stack, defina:
+#   GARMIN_CONNECTOR_SECRET = <o mesmo segredo do @ic/api no Railway>
+#   CF_TUNNEL_TOKEN         = <token do Cloudflare Tunnel> (opcional; ver abaixo)
+#
+# Requer Portainer em Docker standalone (com build). Em Docker Swarm o build não
+# roda — nesse caso use uma imagem pré-buildada.
+
+services:
+  garmin-connector:
+    build:
+      context: .
+    environment:
+      GARMIN_CONNECTOR_SECRET: ${GARMIN_CONNECTOR_SECRET}
+      PORT: "8000"
+    # Exponha a porta se for usar um reverse proxy próprio em vez do túnel:
+    # ports:
+    #   - "8000:8000"
+    restart: unless-stopped
+
+  # Túnel Cloudflare — dá uma URL pública estável para o Railway alcançar o
+  # sidecar sem abrir portas no seu roteador. Crie o túnel no Cloudflare Zero
+  # Trust, aponte um Public Hostname para http://garmin-connector:8000 e cole o
+  # token em CF_TUNNEL_TOKEN. Se preferir expor por conta própria, remova este
+  # serviço e use a porta 8000 acima.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run --token ${CF_TUNNEL_TOKEN}
+    restart: unless-stopped
+    depends_on:
+      - garmin-connector

@@ -1,0 +1,11 @@
+# Railway — serviço garmin-connector (sidecar Python/FastAPI).
+# Root Directory = "apps/connector-garmin". Railway constrói pela imagem do
+# Dockerfile local. Serviço INTERNO: não gere um domínio público — o backend o
+# alcança por http://<nome-do-serviço>.railway.internal:${PORT}.
+
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

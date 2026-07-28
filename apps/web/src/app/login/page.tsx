@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { getSupabase } from '@/lib/supabase';
+import { homeRoute } from '@/lib/auth-route';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,7 +20,8 @@ export default function LoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email, password: senha });
       if (error) throw error;
-      router.push('/clinica');
+      // roteia pelo papel: paciente vai direto ao painel dele, nunca à clínica
+      router.replace(await homeRoute('/clinica'));
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Falha no login');
     } finally {
@@ -58,10 +60,9 @@ export default function LoginPage() {
             {!loading && <Icon n="arrowRight" size={16} />}
           </button>
         </form>
-        <button type="button" className="btn ghost sm" style={{ width: '100%', marginTop: 16 }} onClick={() => router.push('/clinica')}>
-          Ver painel (demonstração)
-          <Icon n="arrowRight" size={14} />
-        </button>
+        <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginTop: 18 }}>
+          É paciente? <a href="/portal/login" style={{ color: 'var(--accent)', fontWeight: 600 }}>Acesse o portal do paciente</a>
+        </p>
       </div>
     </div>
   );

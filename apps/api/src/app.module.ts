@@ -4,7 +4,7 @@ import { SupabaseModule } from './supabase/supabase.module';
 import { AuthModule } from './auth/auth.module';
 import { HealthModule } from './health/health.module';
 import { PatientsModule } from './patients/patients.module';
-import { RookModule } from './rook/rook.module';
+import { GarminModule } from './garmin/garmin.module';
 import { AiModule } from './ai/ai.module';
 import { UsersModule } from './users/users.module';
 import { AlertsModule } from './alerts/alerts.module';
@@ -20,7 +20,7 @@ import { NutritionModule } from './nutrition/nutrition.module';
     AuthModule,
     HealthModule,
     PatientsModule,
-    RookModule,
+    GarminModule,
     AiModule,
     UsersModule,
     AlertsModule,

@@ -1,0 +1,17 @@
+# Railway — serviço ic-api (NestJS + poller BullMQ).
+# Este serviço usa Root Directory = "/" (raiz do monorepo) para o pnpm workspace
+# resolver @ic/types. O sidecar Python tem seu próprio railway.toml em
+# apps/connector-garmin/.
+#
+# Nixpacks detecta pnpm + Node 22 (.nvmrc). O build compila apenas @ic/api
+# (turbo resolve as dependências internas). O start roda o servidor Nest
+# persistente (node dist/main.js), diferente do handler serverless da Vercel.
+
+[build]
+builder = "NIXPACKS"
+buildCommand = "pnpm install --frozen-lockfile && pnpm exec turbo run build --filter=@ic/api"
+
+[deploy]
+startCommand = "node apps/api/dist/main.js"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

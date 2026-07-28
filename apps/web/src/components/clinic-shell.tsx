@@ -5,7 +5,6 @@ import { usePathname, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Icon } from './icons';
 import { useTheme } from './theme-provider';
-import { DATA } from '@/lib/clinic-data';
 import { loadAlerts } from '@/lib/alerts-source';
 import { getSupabase } from '@/lib/supabase';
 
@@ -28,17 +27,16 @@ const NAV: NavGroup[] = [
     items: [
       { href: '/clinica', label: 'Dashboard', icon: 'grid', match: (p) => p === '/clinica' },
       { href: '/clinica/pacientes', label: 'Pacientes', icon: 'users', match: (p) => p.startsWith('/clinica/pacientes') },
+      { href: '/clinica/ranking', label: 'Ranking', icon: 'activity', match: (p) => p.startsWith('/clinica/ranking') },
       { href: '/clinica/alertas', label: 'Alertas', icon: 'bell', badge: true, match: (p) => p.startsWith('/clinica/alertas') },
       { href: '/clinica/relatorios', label: 'Relatórios', icon: 'file', match: (p) => p.startsWith('/clinica/relatorios') },
       { href: '/clinica/equipe', label: 'Equipe', icon: 'users', match: (p) => p.startsWith('/clinica/equipe') },
     ],
   },
   {
-    sec: 'Portal do paciente',
+    sec: 'Minha área',
     items: [
-      { href: '/portal/conectar', label: 'Conectar wearable', icon: 'plug', match: (p) => p.startsWith('/portal/conectar') },
-      { href: '/portal/refeicao', label: 'Registrar refeição', icon: 'flame', match: (p) => p.startsWith('/portal/refeicao') },
-      { href: '/portal/login', label: 'Login do paciente', icon: 'user', match: (p) => p.startsWith('/portal/login') },
+      { href: '/clinica/minha-evolucao', label: 'Minha evolução', icon: 'pulse', match: (p) => p.startsWith('/clinica/minha-evolucao') },
     ],
   },
 ];
@@ -51,6 +49,8 @@ function titleFor(path: string): string {
   if (path.startsWith('/clinica/alertas')) return 'Central de alertas';
   if (path.startsWith('/clinica/relatorios')) return 'Relatórios';
   if (path.startsWith('/clinica/equipe')) return 'Equipe';
+  if (path.startsWith('/clinica/ranking')) return 'Ranking de resultados';
+  if (path.startsWith('/clinica/minha-evolucao')) return 'Minha evolução';
   if (path.startsWith('/clinica/perfil')) return 'Meu perfil';
   return 'IC Clínica';
 }
@@ -92,19 +92,6 @@ function Sidebar({ critCount, open, onClose, userName, userRole, onLogout }: {
           ))}
         </nav>
         <div className="sb-foot">
-          <div className="card" style={{ padding: 11, background: 'var(--accent-soft)', border: 'none', marginBottom: 8 }}>
-            <div className="between" style={{ color: 'var(--accent-ink)', marginBottom: 5 }}>
-              <span className="row gap6" style={{ fontWeight: 700, fontSize: 12 }}>
-                <Icon n="sparkle" size={14} />
-                ROOK API
-              </span>
-              <span className="row gap6" style={{ fontSize: 10.5, fontWeight: 700 }}>
-                <span style={{ width: 6, height: 6, borderRadius: 50, background: 'currentColor' }} />
-                ativa
-              </span>
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--accent-ink)', opacity: 0.8, lineHeight: 1.4 }}>9 integrações · sync em tempo real</div>
-          </div>
           <div className="sb-user">
             <div className="avatar" style={{ width: 34, height: 34, background: 'var(--accent)', fontSize: 13 }}>
               {initials}
@@ -142,9 +129,7 @@ export function ClinicShell({ children }: { children: ReactNode }) {
   const [sbOpen, setSbOpen] = useState(false);
   const [userName, setUserName] = useState('');
   const [userRole, setUserRole] = useState('');
-  const [critCount, setCritCount] = useState(
-    DATA.alerts.filter((a) => a.level === 'crit' && a.status === 'open').length,
-  );
+  const [critCount, setCritCount] = useState(0);
 
   useEffect(() => {
     getSupabase().auth.getUser().then(({ data }) => {
@@ -158,15 +143,22 @@ export function ClinicShell({ children }: { children: ReactNode }) {
         );
       }
     });
-    // Load profile name/role from API if available
-    import('@/lib/api').then(({ apiFetch }) =>
-      apiFetch<{ nome: string; role: string }>('/users/me')
-        .then((p) => { setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role); })
-        .catch(() => {
-          getSupabase().auth.getUser().then(({ data }) => {
-            if (data.user?.email) setUserName(data.user.email.split('@')[0]);
-          });
-        })
+    // Guarda de acesso: SÓ equipe entra na área da clínica. Qualquer não-equipe
+    // (paciente) é mandado para o painel do paciente. Papel resolvido de forma
+    // robusta (API → fallback direto no Supabase) para não vazar por falha da API.
+    import('@/lib/auth-route').then(({ fetchRole, isStaffRole }) =>
+      fetchRole().then((role) => {
+        if (role && !isStaffRole(role)) { router.replace('/portal/painel'); return; }
+        import('@/lib/api').then(({ apiFetch }) =>
+          apiFetch<{ nome: string; role: string }>('/users/me')
+            .then((p) => { setUserName(p.nome); setUserRole(ROLE_LABELS[p.role] ?? p.role); })
+            .catch(() => {
+              getSupabase().auth.getUser().then(({ data }) => {
+                if (data.user?.email) setUserName(data.user.email.split('@')[0]);
+              });
+            })
+        );
+      })
     );
   }, [router]);
 
@@ -205,10 +197,6 @@ export function ClinicShell({ children }: { children: ReactNode }) {
             {critCount > 0 && <span className="dot" />}
           </button>
           <div className="vdivider" style={{ height: 24, margin: '0 4px' }} />
-          <button className="btn ghost sm" onClick={() => router.push('/portal/login')}>
-            <Icon n="user" size={15} />
-            <span className="hide-sm">Portal do paciente</span>
-          </button>
           <button className="icon-btn" title="Sair" onClick={handleLogout}>
             <Icon n="logout" size={18} />
           </button>

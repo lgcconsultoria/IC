@@ -25,8 +25,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
-  const port = Number(process.env.API_PORT ?? 3333);
-  await app.listen(port);
+  // Hosts persistentes (Railway/Render/Fly) injetam PORT; local usa API_PORT.
+  const port = Number(process.env.PORT ?? process.env.API_PORT ?? 3333);
+  await app.listen(port, '0.0.0.0');
   // eslint-disable-next-line no-console
   console.log(`IC API rodando em http://localhost:${port}/api`);
 }

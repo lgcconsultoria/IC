@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { AlertCard, EmptyState } from '@/components/ui';
-import { DATA, type AlertItem, type AlertLevel, type Patient } from '@/lib/clinic-data';
+import { type AlertItem, type AlertLevel, type Patient } from '@/lib/clinic-data';
 import { loadAlerts, resolveAlert, refreshAlerts } from '@/lib/alerts-source';
 
 type LevelFilter = AlertLevel | 'all';
@@ -23,15 +23,9 @@ export default function AlertsPage() {
   async function load() {
     setLoading(true);
     const real = await loadAlerts();
-    if (real && real.length > 0) {
-      setEntries(real.map((x) => ({ item: x.item, patient: x.patient })));
-      setUsingReal(true);
-      setResolved(new Set(real.filter((x) => x.item.status === 'resolved').map((x) => x.item.id)));
-    } else {
-      setEntries(DATA.alerts.map((a) => ({ item: a })));
-      setUsingReal(false);
-      setResolved(new Set(DATA.alerts.filter((a) => a.status === 'resolved').map((a) => a.id)));
-    }
+    setEntries((real ?? []).map((x) => ({ item: x.item, patient: x.patient })));
+    setUsingReal(true);
+    setResolved(new Set((real ?? []).filter((x) => x.item.status === 'resolved').map((x) => x.item.id)));
     setLoading(false);
   }
 

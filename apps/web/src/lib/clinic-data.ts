@@ -374,45 +374,42 @@ export interface ApiPatientLike {
 
 const DEVICE_KEYS = Object.keys(DEVICES) as DeviceKey[];
 
+/**
+ * Monta o view-model do paciente SEM dados fictícios: campos de wearable/saúde
+ * começam zerados/vazios e são preenchidos com dados REAIS (applyRealWearables /
+ * applyRealWeight) e com o perfil real (idade, peso, sync) por quem chama.
+ * Identidade (nome/idade/sexo/altura) vem da API; o resto fica honesto em 0.
+ */
 export function synthPatient(input: ApiPatientLike): Patient {
   const seed = hashStr(input.id) || 1;
-  const rnd = mulberry(seed);
-  const device = DEVICE_KEYS[seed % DEVICE_KEYS.length] as DeviceKey;
-  const adherence = Math.round(28 + rnd() * 66);
-  const perf: Perf = adherence >= 80 ? 'high' : adherence >= 50 ? 'mid' : 'low';
-  const steps = Math.round(2500 + rnd() * 10000);
-  const cal = Math.round(1200 + rnd() * 4200);
-  const workouts = Math.round(rnd() * 6);
-  const sleep = +(5.2 + rnd() * 3).toFixed(1);
-  const rhr = Math.round(50 + rnd() * 28);
-  const hrv = Math.round(28 + rnd() * 52);
-  const syncH = Math.round(rnd() * 130);
-  const weight = +(58 + rnd() * 40).toFixed(0);
-  const heightCm = input.alturaCm ?? Math.round(158 + rnd() * 28);
-  const sex: 'f' | 'm' = input.sexo === 'M' ? 'm' : input.sexo === 'F' ? 'f' : rnd() > 0.5 ? 'f' : 'm';
-  const tags = [
-    adherence < 50 ? 'baixa-aderencia' : null,
-    steps < 5000 ? 'baixa-atividade' : null,
-    workouts === 0 ? 'sem-treino' : null,
-    sleep < 6.2 ? 'sono-ruim' : null,
-    syncH > 48 ? 'sem-sync' : null,
-    adherence >= 85 ? 'alta-performance' : null,
-    steps < 10000 ? 'meta-nao-atingida' : null,
-  ].filter((x): x is string => Boolean(x));
+  const device: DeviceKey = 'garmin'; // clínica é Garmin-only
+  const adherence = 0;
+  const perf: Perf = 'mid';
+  const steps = 0;
+  const cal = 0;
+  const workouts = 0;
+  const sleep = 0;
+  const rhr = 0;
+  const hrv = 0;
+  const syncH = 99999; // "nunca sincronizado" até haver dado real
+  const weight = 0;
+  const heightCm = input.alturaCm ?? 0;
+  const sex: 'f' | 'm' = input.sexo === 'M' ? 'm' : 'f';
+  const tags: string[] = [];
 
   return {
     id: input.id,
     name: input.name,
     initials: initialsOf(input.name),
     sex,
-    age: input.age ?? Math.round(28 + rnd() * 40),
+    age: input.age ?? 0,
     device,
     color: AVCOL[seed % AVCOL.length] as string,
     syncHours: syncH,
     adherence,
     perf,
-    priority: adherence < 50 ? 'h' : adherence < 80 ? 'm' : 'l',
-    alertCount: adherence < 50 ? 2 : adherence < 70 ? 1 : 0,
+    priority: 'l',
+    alertCount: 0,
     steps,
     calories: cal,
     workouts,
@@ -428,12 +425,12 @@ export function synthPatient(input: ApiPatientLike): Patient {
     goalActiveMin: 30,
     tags,
     s: {
-      steps: series(seed + 1, 14, steps, steps * 0.22, adherence > 70 ? 0.15 : -0.12),
-      calories: series(seed + 2, 14, cal, cal * 0.2, adherence > 70 ? 0.12 : -0.1),
-      sleep: series(seed + 3, 14, sleep * 60, 45, 0.04).map((d) => ({ ...d, value: +(d.value / 60).toFixed(1) })),
-      hr: series(seed + 4, 14, rhr, 5, adherence > 70 ? -0.06 : 0.05),
-      hrv: series(seed + 5, 14, hrv, 8, adherence > 70 ? 0.1 : -0.08),
-      weight: series(seed + 6, 30, weight * 10, 6, adherence > 70 ? -0.03 : 0.01).map((d) => ({ ...d, value: +(d.value / 10).toFixed(1) })),
+      steps: [],
+      calories: [],
+      sleep: [],
+      hr: [],
+      hrv: [],
+      weight: [],
     },
   };
 }

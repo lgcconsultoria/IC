@@ -9,6 +9,7 @@ import {
   analyzeMealPhoto,
   addFoodLog,
   loadFoodLogs,
+  readableApiError,
   type MealEstimate,
   type FoodLogsResult,
 } from '@/lib/nutrition-source';
@@ -68,16 +69,27 @@ export default function RegistrarRefeicaoPage() {
       const base64 = dataUrl.slice(comma + 1);
       setAnalyzing(true);
       setEstimate(null);
-      const res = await analyzeMealPhoto(base64, meta);
-      setAnalyzing(false);
-      if (res) {
-        setEstimate(res);
-        setDescricao(res.descricao);
-        setKcal(String(res.kcal_total));
-        setFonte('ia');
-      } else {
-        setErro('A IA não conseguiu analisar a foto. Você pode preencher manualmente.');
+      try {
+        const res = await analyzeMealPhoto(base64, meta);
+        if (res && (res.kcal_total > 0 || res.itens.length > 0)) {
+          setEstimate(res);
+          setDescricao(res.descricao);
+          setKcal(String(res.kcal_total));
+          setFonte('ia');
+        } else {
+          setErro('A IA não identificou alimentos na foto. Tente outra foto ou preencha manualmente.');
+          setFonte('manual');
+        }
+      } catch (err) {
+        const motivo = readableApiError(err);
+        setErro(
+          motivo
+            ? `Não foi possível analisar a foto (${motivo}). Preencha manualmente.`
+            : 'Não foi possível analisar a foto. Preencha manualmente.',
+        );
         setFonte('manual');
+      } finally {
+        setAnalyzing(false);
       }
     };
     reader.readAsDataURL(file);
@@ -124,7 +136,7 @@ export default function RegistrarRefeicaoPage() {
               <div style={{ fontSize: 11.5, color: 'var(--text-faint)' }}>Foto + estimativa de calorias por IA</div>
             </div>
           </div>
-          <button className="btn ghost sm" onClick={() => router.push('/portal/conectar')}>
+          <button className="btn ghost sm" onClick={() => router.push('/portal/painel')}>
             <Icon n="chevL" size={14} /> Voltar
           </button>
         </div>

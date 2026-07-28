@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Icon } from '@/components/icons';
 import { DeviceBadge } from '@/components/ui';
 import { getSupabase } from '@/lib/supabase';
+import { homeRoute } from '@/lib/auth-route';
 
 export default function PatientLoginPage() {
   const router = useRouter();
@@ -20,7 +21,7 @@ export default function PatientLoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithPassword({ email, password: pw });
       if (error) throw error;
-      router.push('/portal/conectar');
+      router.replace(await homeRoute('/portal/painel'));
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Falha no login');
     } finally {
@@ -33,7 +34,7 @@ export default function PatientLoginPage() {
     try {
       const { error } = await getSupabase().auth.signInWithOAuth({
         provider,
-        options: { redirectTo: typeof window !== 'undefined' ? window.location.origin + '/portal/conectar' : undefined },
+        options: { redirectTo: typeof window !== 'undefined' ? window.location.origin + '/portal/painel' : undefined },
       });
       if (error) throw error;
     } catch (err) {
@@ -124,10 +125,9 @@ export default function PatientLoginPage() {
           <p style={{ textAlign: 'center', fontSize: 12.5, color: 'var(--text-muted)', marginTop: 20 }}>
             Não tem conta? <a style={{ color: 'var(--accent)', fontWeight: 600, cursor: 'pointer' }}>Receba o convite da sua clínica</a>
           </p>
-          <button type="button" className="btn ghost sm" style={{ width: '100%', marginTop: 18 }} onClick={() => router.push('/clinica')}>
-            <Icon n="chevL" size={14} />
-            Voltar ao portal da clínica
-          </button>
+          <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-faint)', marginTop: 14 }}>
+            É da equipe da clínica? <a href="/login" style={{ color: 'var(--accent)', fontWeight: 600 }}>Acesse o painel da clínica</a>
+          </p>
         </form>
       </div>
     </div>

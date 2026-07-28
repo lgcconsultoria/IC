@@ -32,7 +32,7 @@ export class AiController {
     const [patientRow, wearableRows] = await Promise.all([
       this.db
         .from('patients')
-        .select('id, objetivo, data_nasc, users(nome)')
+        .select('id, objetivo, data_nasc, users!user_id(nome)')
         .eq('id', dto.patientId)
         .eq('clinic_id', user.clinicId)
         .single(),

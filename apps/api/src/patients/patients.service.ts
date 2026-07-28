@@ -12,6 +12,17 @@ import { AppUser, isStaff } from '../auth/app-user';
 import type { CreatePatientDto } from './dto/create-patient.dto';
 import type { CreateMeasurementDto } from './dto/create-measurement.dto';
 import type { UpdateGoalsDto } from './dto/update-goals.dto';
+import type { NivelAtividade, UpdateMetabolismDto } from './dto/update-metabolism.dto';
+
+/** Fatores de atividade física (multiplicador da TMB para chegar ao TDEE). */
+const FATOR_ATIVIDADE: Record<NivelAtividade, number> = {
+  sedentario: 1.2,
+  leve: 1.375,
+  moderado: 1.55,
+  intenso: 1.725,
+  muito_intenso: 1.9,
+};
+const NIVEL_ATIVIDADE_PADRAO: NivelAtividade = 'moderado';
 
 /**
  * Regras de acesso aplicadas em código (o client admin faz bypass de RLS):
@@ -27,13 +38,26 @@ export class PatientsService {
 
   async list(user: AppUser) {
     this.assertStaff(user);
-    const { data, error } = await this.db
+    // users!user_id desambigua o embed: patients tem 2 FKs p/ users
+    // (user_id e tmb_medido_por, add na migration 0008).
+    const sel = 'id, nome:users!user_id(nome), user_id, objetivo, ativo, created_at';
+    // Exclui os registros de autoacompanhamento da equipe (eh_funcionario).
+    // Se a coluna ainda não existir (migration 0009), lista todos sem filtrar.
+    let res = await this.db
       .from('patients')
-      .select('id, nome:users(nome), user_id, objetivo, ativo, created_at')
+      .select(sel)
       .eq('clinic_id', user.clinicId)
+      .eq('eh_funcionario', false)
       .order('created_at', { ascending: false });
-    if (error) throw new InternalServerErrorException(error.message);
-    return data;
+    if (res.error) {
+      res = await this.db
+        .from('patients')
+        .select(sel)
+        .eq('clinic_id', user.clinicId)
+        .order('created_at', { ascending: false });
+    }
+    if (res.error) throw new InternalServerErrorException(res.error.message);
+    return res.data;
   }
 
   async create(user: AppUser, dto: CreatePatientDto) {
@@ -101,7 +125,12 @@ export class PatientsService {
     return patient;
   }
 
-  /** Paciente vinculado ao usuário logado (portal do paciente). */
+  /**
+   * Registro de paciente do usuário logado.
+   *   - paciente comum: o registro criado pela clínica;
+   *   - funcionário da equipe: registro de AUTOACOMPANHAMENTO, criado sob
+   *     demanda (eh_funcionario=true) para ele conectar o próprio relógio.
+   */
   async findMine(user: AppUser) {
     const { data, error } = await this.db
       .from('patients')
@@ -109,14 +138,55 @@ export class PatientsService {
       .eq('user_id', user.id)
       .maybeSingle();
     if (error) throw new InternalServerErrorException(error.message);
-    if (!data) throw new NotFoundException('Paciente não encontrado para este usuário');
-    return data;
+    if (data) return data;
+
+    // Equipe sem registro ainda → provisiona o autoacompanhamento.
+    if (isStaff(user)) return this.ensureSelfPatient(user);
+    throw new NotFoundException('Paciente não encontrado para este usuário');
+  }
+
+  /** Cria (idempotente) o registro de autoacompanhamento de um funcionário. */
+  async ensureSelfPatient(user: AppUser) {
+    const { data: existing } = await this.db
+      .from('patients')
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    if (existing) return existing;
+
+    // eh_funcionario depende da migration 0009; tenta com o flag e, se a
+    // coluna ainda não existir, cai para o insert base (degrada com segurança).
+    const base = {
+      clinic_id: user.clinicId,
+      user_id: user.id,
+      objetivo: 'Autoacompanhamento',
+    };
+    let ins = await this.db
+      .from('patients')
+      .insert({ ...base, eh_funcionario: true })
+      .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+      .single();
+    if (ins.error) {
+      ins = await this.db
+        .from('patients')
+        .insert(base)
+        .select('id, clinic_id, user_id, objetivo, altura_cm, sexo, data_nasc')
+        .single();
+    }
+    if (ins.error || !ins.data) {
+      throw new InternalServerErrorException(
+        ins.error?.message ?? 'Falha ao criar autoacompanhamento',
+      );
+    }
+    return ins.data;
   }
 
   async findOne(user: AppUser, patientId: string) {
+    // Seleciona só colunas SEMPRE existentes — não depende das migrations
+    // 0008/0009. As colunas de metabolismo são lidas sob demanda em getMetabolism.
     const { data, error } = await this.db
       .from('patients')
-      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo')
+      .select('id, clinic_id, user_id, data_nasc, sexo, altura_cm, objetivo, ativo, nome:users!user_id(nome)')
       .eq('id', patientId)
       .single();
     if (error || !data) throw new NotFoundException('Paciente não encontrado');
@@ -161,7 +231,7 @@ export class PatientsService {
     return data;
   }
 
-  /** Série diária de wearables (ROOK) dos últimos `days` dias. */
+  /** Série diária de wearables (Garmin) dos últimos `days` dias. */
   async listWearableDaily(user: AppUser, patientId: string, days = 30) {
     await this.findOne(user, patientId); // valida acesso
     const since = new Date();
@@ -178,7 +248,7 @@ export class PatientsService {
     return data;
   }
 
-  /** Atividades/treinos individuais (ROOK) dos últimos `days` dias. */
+  /** Atividades/treinos individuais (Garmin) dos últimos `days` dias. */
   async listWearableActivities(user: AppUser, patientId: string, days = 30) {
     await this.findOne(user, patientId); // valida acesso
     const since = new Date();
@@ -233,6 +303,303 @@ export class PatientsService {
       .single();
     if (error) throw new InternalServerErrorException(error.message);
     return data;
+  }
+
+  // ----- Metabolismo (TMB / TDEE / balanço calórico) -----
+
+  /**
+   * Perfil metabólico completo do paciente:
+   *   - TMB calculada (Mifflin-St Jeor) a partir de sexo/idade/altura/peso;
+   *   - TMB medida (calorimetria/InBody digitada pela clínica) substitui a calculada;
+   *   - TDEE = TMB × fator de atividade;
+   *   - balanço do dia = consumido (diário alimentar) − gasto (wearable ou TDEE).
+   */
+  async getMetabolism(user: AppUser, patientId: string) {
+    const patient = await this.findOne(user, patientId); // valida acesso
+
+    // Colunas de metabolismo (migration 0008). Lidas à parte e de forma
+    // tolerante: se a migration ainda não foi aplicada, degrada para nulos.
+    const metaRes = await this.db
+      .from('patients')
+      .select('peso_kg, nivel_atividade, tmb_medido_kcal, tmb_medido_em')
+      .eq('id', patientId)
+      .maybeSingle();
+    const ex = (metaRes.error ? {} : metaRes.data ?? {}) as {
+      peso_kg?: number | null;
+      nivel_atividade?: NivelAtividade | null;
+      tmb_medido_kcal?: number | null;
+      tmb_medido_em?: string | null;
+    };
+
+    // peso: prioriza patients.peso_kg; senão a última medição
+    let pesoKg: number | null = ex.peso_kg ?? null;
+    if (pesoKg == null) {
+      const { data: m } = await this.db
+        .from('measurements')
+        .select('peso_kg')
+        .eq('patient_id', patientId)
+        .not('peso_kg', 'is', null)
+        .order('data', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      pesoKg = m?.peso_kg ?? null;
+    }
+
+    const nivel = (ex.nivel_atividade ?? null) || NIVEL_ATIVIDADE_PADRAO;
+    const fator = FATOR_ATIVIDADE[nivel] ?? FATOR_ATIVIDADE[NIVEL_ATIVIDADE_PADRAO];
+    const idade = this.idadeDe(patient.data_nasc);
+    const tmbMedido = ex.tmb_medido_kcal ?? null;
+
+    const tmbCalculado = this.mifflinStJeor(
+      patient.sexo,
+      pesoKg,
+      patient.altura_cm,
+      idade,
+    );
+    // a calorimetria medida é a fonte mais fiel; senão usa a fórmula
+    const tmb = tmbMedido ?? tmbCalculado;
+    const tdee = tmb != null ? Math.round(tmb * fator) : null;
+
+    // gasto real do dia (wearable) tem prioridade sobre o TDEE estimado
+    const hoje = new Date().toISOString().slice(0, 10);
+    const { data: wd } = await this.db
+      .from('wearable_daily')
+      .select('kcal_gastas')
+      .eq('patient_id', patientId)
+      .eq('data', hoje)
+      .maybeSingle();
+    const gastoWearable = wd?.kcal_gastas ?? null;
+    const gastoDia = gastoWearable ?? tdee;
+
+    // consumido hoje (diário alimentar)
+    const { data: logs } = await this.db
+      .from('food_logs')
+      .select('kcal_estimada')
+      .eq('patient_id', patientId)
+      .eq('data', hoje);
+    const consumidoHoje = (logs ?? []).reduce(
+      (acc, r) => acc + (Number(r.kcal_estimada) || 0),
+      0,
+    );
+
+    const saldo = gastoDia != null ? consumidoHoje - gastoDia : null; // <0 déficit, >0 superávit
+
+    return {
+      sexo: patient.sexo ?? null,
+      idade,
+      altura_cm: patient.altura_cm ?? null,
+      peso_kg: pesoKg,
+      nivel_atividade: nivel,
+      fator_atividade: fator,
+      tmb_calculado: tmbCalculado,
+      tmb_medido_kcal: tmbMedido,
+      tmb_medido_em: ex.tmb_medido_em ?? null,
+      tmb: tmb, // valor efetivamente usado (medido ou calculado)
+      tmb_fonte: tmbMedido != null ? 'medido' : tmbCalculado != null ? 'calculado' : null,
+      tdee,
+      consumido_hoje: consumidoHoje,
+      gasto_hoje: gastoDia,
+      gasto_fonte: gastoWearable != null ? 'wearable' : gastoDia != null ? 'tdee' : null,
+      saldo_hoje: saldo,
+      balanco: saldo == null ? null : saldo < 0 ? 'deficit' : saldo > 0 ? 'superavit' : 'neutro',
+    };
+  }
+
+  /**
+   * Atualiza o perfil metabólico. Paciente pode ajustar o próprio peso e nível
+   * de atividade; a TMB medida (calorimetria) só a equipe da clínica define.
+   */
+  async updateMetabolism(
+    user: AppUser,
+    patientId: string,
+    dto: UpdateMetabolismDto,
+  ) {
+    await this.findOne(user, patientId); // valida acesso
+    const staff = isStaff(user);
+
+    const patch: Record<string, unknown> = {};
+    if (dto.pesoKg !== undefined) patch.peso_kg = dto.pesoKg;
+    if (dto.nivelAtividade !== undefined) patch.nivel_atividade = dto.nivelAtividade;
+    if (dto.tmbMedidoKcal !== undefined) {
+      if (!staff) {
+        throw new ForbiddenException(
+          'Somente a equipe da clínica registra a calorimetria (gasto em repouso medido)',
+        );
+      }
+      patch.tmb_medido_kcal = dto.tmbMedidoKcal;
+      patch.tmb_medido_por = user.id;
+      patch.tmb_medido_em = new Date().toISOString();
+    }
+
+    if (Object.keys(patch).length > 0) {
+      const { error } = await this.db
+        .from('patients')
+        .update(patch)
+        .eq('id', patientId);
+      if (error) throw new InternalServerErrorException(error.message);
+    }
+    return this.getMetabolism(user, patientId);
+  }
+
+  /** TMB pela equação de Mifflin-St Jeor (kcal/dia). null se faltar dado. */
+  private mifflinStJeor(
+    sexo: string | null,
+    pesoKg: number | null,
+    alturaCm: number | null,
+    idade: number | null,
+  ): number | null {
+    if (!pesoKg || !alturaCm || idade == null || !sexo) return null;
+    const base = 10 * pesoKg + 6.25 * alturaCm - 5 * idade;
+    const ajuste = sexo === 'M' ? 5 : sexo === 'F' ? -161 : -78; // 'outro' ~ média
+    return Math.round(base + ajuste);
+  }
+
+  private idadeDe(dataNasc: string | null): number | null {
+    if (!dataNasc) return null;
+    const nasc = new Date(dataNasc);
+    if (Number.isNaN(nasc.getTime())) return null;
+    const hoje = new Date();
+    let idade = hoje.getFullYear() - nasc.getFullYear();
+    const m = hoje.getMonth() - nasc.getMonth();
+    if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) idade--;
+    return idade;
+  }
+
+  // ----- Ranking de resultados (clínica) -----
+
+  /**
+   * Ranking de evolução dos pacientes (e, opcionalmente, funcionários) da
+   * clínica num período. Pontua perda de peso + ganho de massa magra +
+   * aumento da pontuação da bioimpedância (InBody).
+   */
+  async getRanking(
+    user: AppUser,
+    opts: {
+      from: string;
+      to: string;
+      publicos: Array<'pacientes' | 'funcionarios'>;
+      generos: Array<'F' | 'M' | 'outro'>;
+    },
+  ) {
+    this.assertStaff(user);
+
+    // pesos do score (documentados na resposta para transparência)
+    const PESO = { perdaPeso: 10, ganhoMassaMagra: 15, pontuacaoInbody: 1 };
+
+    const incluiPac = opts.publicos.includes('pacientes');
+    const incluiFunc = opts.publicos.includes('funcionarios');
+    type Row = { id: string; sexo: string | null; eh_funcionario: boolean; nome: { nome: string } | { nome: string }[] | null };
+
+    // Tenta com eh_funcionario (migration 0009). Se a coluna não existir,
+    // cai para a consulta base tratando todos como não-funcionários.
+    let rows: Row[];
+    {
+      let q = this.db
+        .from('patients')
+        .select('id, sexo, eh_funcionario, nome:users!user_id(nome)')
+        .eq('clinic_id', user.clinicId)
+        .eq('ativo', true);
+      if (incluiPac && !incluiFunc) q = q.eq('eh_funcionario', false);
+      else if (!incluiPac && incluiFunc) q = q.eq('eh_funcionario', true);
+      if (opts.generos.length > 0 && opts.generos.length < 3) q = q.in('sexo', opts.generos);
+      const res = await q;
+      if (res.error) {
+        // fallback sem eh_funcionario
+        if (incluiFunc && !incluiPac) {
+          rows = []; // não há como identificar funcionários sem a coluna
+        } else {
+          let q2 = this.db
+            .from('patients')
+            .select('id, sexo, nome:users!user_id(nome)')
+            .eq('clinic_id', user.clinicId)
+            .eq('ativo', true);
+          if (opts.generos.length > 0 && opts.generos.length < 3) q2 = q2.in('sexo', opts.generos);
+          const res2 = await q2;
+          if (res2.error) throw new InternalServerErrorException(res2.error.message);
+          rows = ((res2.data ?? []) as Omit<Row, 'eh_funcionario'>[]).map((r) => ({ ...r, eh_funcionario: false }));
+        }
+      } else {
+        rows = (res.data ?? []) as Row[];
+      }
+    }
+    if (rows.length === 0) {
+      return { pesos: PESO, from: opts.from, to: opts.to, itens: [] };
+    }
+    const ids = rows.map((r) => r.id);
+
+    const [medsRes, bioRes] = await Promise.all([
+      this.db
+        .from('measurements')
+        .select('patient_id, data, peso_kg')
+        .in('patient_id', ids)
+        .gte('data', opts.from)
+        .lte('data', opts.to)
+        .not('peso_kg', 'is', null)
+        .order('data', { ascending: true }),
+      // body_composition depende da migration 0008 — tolera ausência
+      this.db
+        .from('body_composition')
+        .select('patient_id, data_exame, massa_magra_kg, pontuacao')
+        .in('patient_id', ids)
+        .gte('data_exame', opts.from)
+        .lte('data_exame', opts.to)
+        .order('data_exame', { ascending: true }),
+    ]);
+    const meds = medsRes.data;
+    const bio = bioRes.error ? [] : bioRes.data;
+
+    // primeiro/último valor por paciente
+    const firstLast = <T>(arr: T[], val: (t: T) => number | null) => {
+      const nums = arr.map(val).filter((v): v is number => v != null);
+      if (nums.length < 2) return null;
+      return { first: nums[0], last: nums[nums.length - 1] };
+    };
+    const byPatient = <T extends { patient_id: string }>(arr: T[] | null) => {
+      const m = new Map<string, T[]>();
+      for (const r of arr ?? []) {
+        const a = m.get(r.patient_id) ?? [];
+        a.push(r);
+        m.set(r.patient_id, a);
+      }
+      return m;
+    };
+    const medsBy = byPatient(meds);
+    const bioBy = byPatient(bio);
+
+    const itens = rows
+      .map((r) => {
+        const nomeObj = Array.isArray(r.nome) ? r.nome[0] : r.nome;
+        const mPeso = firstLast(medsBy.get(r.id) ?? [], (m) => Number(m.peso_kg));
+        const mMagra = firstLast(bioBy.get(r.id) ?? [], (b) => Number(b.massa_magra_kg));
+        const mPontos = firstLast(bioBy.get(r.id) ?? [], (b) => Number(b.pontuacao));
+
+        const perdaPeso = mPeso ? +(mPeso.first - mPeso.last).toFixed(1) : null; // >0 perdeu
+        const ganhoMassaMagra = mMagra ? +(mMagra.last - mMagra.first).toFixed(1) : null;
+        const deltaPontuacao = mPontos ? Math.round(mPontos.last - mPontos.first) : null;
+
+        const temDados =
+          perdaPeso != null || ganhoMassaMagra != null || deltaPontuacao != null;
+        const score =
+          (perdaPeso ?? 0) * PESO.perdaPeso +
+          (ganhoMassaMagra ?? 0) * PESO.ganhoMassaMagra +
+          (deltaPontuacao ?? 0) * PESO.pontuacaoInbody;
+
+        return {
+          patient_id: r.id,
+          nome: nomeObj?.nome ?? 'Paciente',
+          sexo: r.sexo,
+          eh_funcionario: r.eh_funcionario,
+          perda_peso_kg: perdaPeso,
+          ganho_massa_magra_kg: ganhoMassaMagra,
+          delta_pontuacao_inbody: deltaPontuacao,
+          score: temDados ? +score.toFixed(1) : null,
+          tem_dados: temDados,
+        };
+      })
+      .filter((i) => i.tem_dados)
+      .sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    return { pesos: PESO, from: opts.from, to: opts.to, itens };
   }
 
   // ----- helpers -----
